@@ -8,12 +8,21 @@ import numpy as np
 import pettingzoo
 from pettingzoo import ParallelEnv
 import functools
+import pickle
 from copy import copy
 
 stats = pd.read_csv('pokemon-bst-totals.csv')
 stats['Name'] = stats['Name'].apply(str.lower)
 stats.set_index('Name',inplace=True)
-
+with open('pkm_data.pkl', 'rb') as f:
+    loaded_data = pickle.load(f)
+move_dict = loaded_data['move_dict']
+dex_nums = loaded_data['dex_nums']
+status_boosts_dict = loaded_data['status_boosts_dict']
+alt_status_dict = loaded_data['alt_status_dict']
+status_dict = loaded_data['status_dict']
+pokemon_list = loaded_data['pokemon_list']
+partial_trapped_dict = loaded_data['partial_trapped_dict']
 class Pokebot_Gen1(ParallelEnv):
     metadata = {'name':'pokemon_gen_1_v1'}
 
@@ -26,15 +35,15 @@ class Pokebot_Gen1(ParallelEnv):
         We represent it as [Pokemon Species (dex number), Opponent or Player Pokemon(0 represents player and 1 represents opponent), Currently Active(0 is false, 1 is true), 
         Current Status Condition (Note:sleep turns are included here),Additional Status Conditions (Confusion/Leech Seed), Partial Trapped Turns, Toxic Counter,
           Current Health, Max Health, Current Speed, Current Special, Current Attack, Current Defense, Level, Speed boosts, Special boosts, 
-          Attack boosts, Defense boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
+          Attack boosts, Defense boosts, Status Boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
           Move 3 Name, Move 3 PP, Move 4 Name, Move 4 PP]
           
         '''
         
-        self._p1_data = np.zeros(shape=(12,27),dtype=np.uint16)
-        self._p2_data = np.zeros(shape=(12,27),dtype=np.uint16)
+        self._p1_data = np.zeros(shape=(12,28),dtype=np.uint16)
+        self._p2_data = np.zeros(shape=(12,28),dtype=np.uint16)
         self._finished = None
-        self._battle_array = np.zeros(shape=(12,27),dtype=np.uint16)
+        self._battle_array = np.zeros(shape=(12,28),dtype=np.uint16)
         self.possible_agents = ['p1','p2']
         self._turn = 0
         self._active_index = (-1,-1)
@@ -107,7 +116,14 @@ class Pokebot_Gen1(ParallelEnv):
     @turn.setter
     def turn(self,updated_turn):
         self._turn = updated_turn
-    
+
+    def create_pkm_array(self,spcs = 0, player = 0, active = 0, curr_status = 0, add_status = 0, partial_trap = 0, toxic_counter = 1, curr_health = 1000, max_health = 1000,
+                         curr_speed = 0, curr_special = 0, curr_attack = 0, curr_defense = 0, level = 0, speed_boosts = 0, special_boosts = 0, attack_boosts = 0, defense_boosts = 0,
+                         reflghtscreen = 0, mv1n = 1, mv1pp = 100, mv2n = 1, mv2pp = 100, mv3n = 1, mv3pp = 100, mv4n = 1,mv4pp = 100):
+        
+        return np.array([spcs,player,active,curr_status,add_status,partial_trap,toxic_counter,curr_health,max_health,curr_speed,curr_special,curr_attack,
+                         curr_defense,level,speed_boosts,special_boosts,attack_boosts,defense_boosts,reflghtscreen,mv1n,mv1pp,mv2n,mv2pp,mv3n,mv3pp,mv4n,mv4pp],dtype= np.uint16)
+
     def reset(self, seed = None, options = {}):
 
         super().reset(seed=seed, options=options)
@@ -122,7 +138,6 @@ class Pokebot_Gen1(ParallelEnv):
             p2_mon_list = team_generator(seed_num=seed)
         master_array = np.array([])
         p1_array = np.array([])
-        
         for pkm in p1_mon_list:
             move_ids_pp = []
             for move in [pkm.move_1, pkm.move_2, pkm.move_3, pkm.move_4]:
@@ -130,17 +145,15 @@ class Pokebot_Gen1(ParallelEnv):
                     move_ids_pp.extend([move_dict[move.id], move.current_pp])
                 else:
                     move_ids_pp.extend([move_dict['nomove'], 0])
-            
-            pkm_p1_array = np.array([
-                dex_nums[pkm.species], 0, 0, 0, 0, 0, 1, pkm.hp, pkm.hp, pkm.speed,
-                pkm.special, pkm.attack, pkm.defense, 100, 0, 0, 0, 0, 0, *move_ids_pp
-            ], dtype=np.uint16)
+            pkm_p1_array = self.create_pkm_array(spcs=dex_nums[pkm.species],curr_health=pkm.hp,max_health=pkm.hp,curr_speed=pkm.speed,curr_special=pkm.special,curr_attack=pkm.attack,
+                                                 curr_defense=pkm.defense,level=100,mv1n=move_ids_pp[0],mv1pp=[1],mv2n=move_ids_pp[2],mv2pp=move_ids_pp[3],mv3n=move_ids_pp[4],
+                                                 mv3pp=move_ids_pp[5],mv4n=move_ids_pp[6],mv4pp=move_ids_pp[7])
 
             
             p1_array = np.vstack((p1_array, pkm_p1_array)) if p1_array.size > 0 else pkm_p1_array
         
         while len(p1_array) < 6:
-            filler_pkm = np.array([0,0,0,2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1,0], dtype=np.uint16)
+            filler_pkm = self.create_pkm_array(curr_status=2,curr_health=0)
             p1_array = np.vstack((p1_array, filler_pkm))
         
         p2_array = np.array([])
@@ -151,26 +164,24 @@ class Pokebot_Gen1(ParallelEnv):
                     move_ids_pp.extend([move_dict[move.id], move.current_pp])
                 else:
                     move_ids_pp.extend([move_dict['nomove'], 0])
-            
-            pkm_p2_array = np.array([
-                dex_nums[pkm.species], 1, 0, 0, 0, 0, 1, pkm.hp, pkm.hp, pkm.speed,
-                pkm.special, pkm.attack, pkm.defense, 100, 0, 0, 0, 0, 0, *move_ids_pp
-            ], dtype=np.uint16)
+            pkm_p2_array = self.create_pkm_array(spcs=dex_nums[pkm.species],player=1,curr_health=pkm.hp,max_health=pkm.hp,curr_speed=pkm.speed,curr_special=pkm.special,curr_attack=pkm.attack,
+                                                 curr_defense=pkm.defense,level=100,mv1n=move_ids_pp[0],mv1pp=[1],mv2n=move_ids_pp[2],mv2pp=move_ids_pp[3],mv3n=move_ids_pp[4],
+                                                 mv3pp=move_ids_pp[5],mv4n=move_ids_pp[6],mv4pp=move_ids_pp[7])
             
             p2_array = np.vstack((p2_array, pkm_p2_array)) if p2_array.size > 0 else pkm_p2_array
         
         while len(p2_array) < 6:
-            filler_pkm = np.array([0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1,0], dtype=np.uint16)
+            filler_pkm = self.create_pkm_array(player=1,curr_status=2,curr_health=0)
             p2_array = np.vstack((p2_array, filler_pkm))
         
         master_array = np.vstack((p1_array, p2_array))
         for i in range(6):
-            pkm_p2_array = np.array([0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0
-                                            ,1,0,1,0,1,0,1,0],dtype=np.uint16)
-            p2_array = np.vstack((p1_array,pkm_p1_array))
-            pkm_p1_array = np.array([0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0
-                                            ,1,0,1,0,1,0,1,0],dtype=np.uint16)
-            p1_array = np.vstack((p1_array,pkm_p1_array))
+            pkm_p1_array = self.create_pkm_array()
+
+            p2_array = np.vstack((p2_array,pkm_p1_array))
+
+            pkm_p2_array = self.create_pkm_array(player=1)
+            p1_array = np.vstack((p1_array,pkm_p2_array))
         self.p1_data = p1_array
         self.p2_data = p2_array
         self.agents = copy(self.possible_agents)
@@ -178,7 +189,7 @@ class Pokebot_Gen1(ParallelEnv):
         self.finished = False
         self.turn = 0 
         self.active_index = (-1,-1)
-        observations = (p1_array,p2_array)
+        observations = {'p1':p1_array,'p2':p2_array}
 
         info = {a: {} for a in self.agents}
         return (observations,info)
@@ -190,17 +201,17 @@ class Pokebot_Gen1(ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
-        high_values = np.array([255,1,1,31,15,15,63,1023,1023,1023,1023,1023,1023,127,15,15,15,15,3,255,127,255,127,255,127,255,127])
+        high_values = np.array([255,1,1,31,15,15,63,1023,1023,1023,1023,1023,1023,127,15,15,15,15,31,3,255,127,255,127,255,127,255,127])
         high_matrix = np.tile(high_values, (12, 1)) 
         observation_spaces = {'p1':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 27), 
+                    shape=(12, 28), 
                     dtype=np.uint16
                 ), 'p2':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 27), 
+                    shape=(12, 28), 
                     dtype=np.uint16
                 )}
         return observation_spaces
@@ -208,3 +219,6 @@ class Pokebot_Gen1(ParallelEnv):
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
         return Discrete(11)
+from pettingzoo.test import parallel_api_test
+env = Pokebot_Gen1()
+parallel_api_test(env,num_cycles=1)
