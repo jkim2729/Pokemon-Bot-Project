@@ -17,8 +17,11 @@ stats.set_index('Name',inplace=True)
 with open('pkm_data.pkl', 'rb') as f:
     loaded_data = pickle.load(f)
 move_dict = loaded_data['move_dict']
+pkm_moves_dict = loaded_data['pkm_moves_dict']
 dex_nums = loaded_data['dex_nums']
+rev_dex_nums = {v: k for k, v in dex_nums.items()}
 status_boosts_dict = loaded_data['status_boosts_dict']
+rev_status_boosts_dict = {v: k for k, v in status_boosts_dict.items()}
 alt_status_dict = loaded_data['alt_status_dict']
 status_dict = loaded_data['status_dict']
 pokemon_list = loaded_data['pokemon_list']
@@ -192,12 +195,30 @@ class Pokebot_Gen1(ParallelEnv):
         observations = {'p1':p1_array,'p2':p2_array}
 
         info = {a: {} for a in self.agents}
-        return (observations,info)
+        return tuple(observations,info)
+
+    def new_mon(self,player,row): #corresponds to player of new pokemon, so player 1 seeing a new player 2 mon would be player 2
+        mon_name = rev_dex_nums[self.battle_array[row,0]]
+        if player == 0:
+            
+            self.p1_data[row,[0,7,8,9,10,11,12]] = [self.battle_array[row,0],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['Speed_Total'],stats.loc[mon_name]['Special_Total'],
+                                                    stats.loc[mon_name]['Attack_Total'],stats.loc[mon_name]['Defense_Total']]
+        if player == 1:
+            self.p2_data[row,[0,7,8,9,10,11,12]] = [self.battle_array[row,0],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['Speed_Total'],stats.loc[mon_name]['Special_Total'],
+                                                    stats.loc[mon_name]['Attack_Total'],stats.loc[mon_name]['Defense_Total']]
 
     def step(self,actions):
         p1_action = actions['p1']
         p2_action = actions['p2']
 
+        if self.turn == 0:
+            p1_active = p1_action-4
+            p2_active = p2_action-4
+            self.p1_data[p1_active,2] = 1
+            self.p2_data[p2_active,2] = 1
+            self.battle_array[p1_active,2] = 1
+            self.battle_array[p2_active+6,2] = 1
+            self.p1_data[6+p2_active,1] = self.battle_array[6+p2_active,1]
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
