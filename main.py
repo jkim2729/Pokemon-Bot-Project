@@ -9,8 +9,8 @@ import pettingzoo
 from pettingzoo import ParallelEnv
 import functools
 import pickle
+import math
 from copy import copy
-
 stats = pd.read_csv('pokemon-bst-totals.csv')
 stats['Name'] = stats['Name'].apply(str.lower)
 stats.set_index('Name',inplace=True)
@@ -37,16 +37,16 @@ class Pokebot_Gen1(ParallelEnv):
         Each array contains required information
         We represent it as [Pokemon Species (dex number), Opponent or Player Pokemon(0 represents player and 1 represents opponent), Currently Active(0 is false, 1 is true), 
         Current Status Condition (Note:sleep turns are included here),Additional Status Conditions (Confusion/Leech Seed), Partial Trapped Turns, Toxic Counter,
-          Current Health, Max Health, Current Speed, Current Special, Current Attack, Current Defense, Level, Speed boosts, Special boosts, 
-          Attack boosts, Defense boosts, Status Boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
-          Move 3 Name, Move 3 PP, Move 4 Name, Move 4 PP]
+          Current Health, Max Health, Base Speed, Current Speed, Current Special, Base Attack, Current Attack, Current Defense, Level, Speed boosts, Special boosts, 
+          Attack boosts, Defense boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
+          Move 3 Name, Move 3 PP, Move 4 Name, Move 4 PP,prev_dmg (used for counter)]
           
         '''
         
-        self._p1_data = np.zeros(shape=(12,28),dtype=np.uint16)
-        self._p2_data = np.zeros(shape=(12,28),dtype=np.uint16)
+        self._p1_data = np.zeros(shape=(12,30),dtype=np.uint16)
+        self._p2_data = np.zeros(shape=(12,30),dtype=np.uint16)
         self._finished = None
-        self._battle_array = np.zeros(shape=(12,28),dtype=np.uint16)
+        self._battle_array = np.zeros(shape=(12,30),dtype=np.uint16)
         self.possible_agents = ['p1','p2']
         self._turn = 0
         self._active_index = (-1,-1)
@@ -120,11 +120,11 @@ class Pokebot_Gen1(ParallelEnv):
     def turn(self,updated_turn):
         self._turn = updated_turn
 
-    def create_pkm_array(self,spcs = 0, player = 0, active = 0, curr_status = 0, add_status = 0, partial_trap = 0, toxic_counter = 1, curr_health = 1000, max_health = 1000,
-                         curr_speed = 0, curr_special = 0, curr_attack = 0, curr_defense = 0, level = 0, speed_boosts = 0, special_boosts = 0, attack_boosts = 0, defense_boosts = 0,
+    def create_pkm_array(self,spcs = 0, player = 0, active = 0, curr_status = 0, add_status = 0, partial_trap = 0, toxic_counter = 1, curr_health = 1000, max_health = 1000, base_speed = 0,
+                         curr_speed = 0, curr_special = 0, base_attack = 0, curr_attack = 0, curr_defense = 0, level = 0, speed_boosts = 0, special_boosts = 0, attack_boosts = 0, defense_boosts = 0,
                          reflghtscreen = 0, mv1n = 1, mv1pp = 100, mv2n = 1, mv2pp = 100, mv3n = 1, mv3pp = 100, mv4n = 1,mv4pp = 100):
         
-        return np.array([spcs,player,active,curr_status,add_status,partial_trap,toxic_counter,curr_health,max_health,curr_speed,curr_special,curr_attack,
+        return np.array([spcs,player,active,curr_status,add_status,partial_trap,toxic_counter,curr_health,max_health,base_speed,curr_speed,curr_special,base_attack,curr_attack,
                          curr_defense,level,speed_boosts,special_boosts,attack_boosts,defense_boosts,reflghtscreen,mv1n,mv1pp,mv2n,mv2pp,mv3n,mv3pp,mv4n,mv4pp],dtype= np.uint16)
 
     def reset(self, seed = None, options = {}):
@@ -148,7 +148,8 @@ class Pokebot_Gen1(ParallelEnv):
                     move_ids_pp.extend([move_dict[move.id], move.current_pp])
                 else:
                     move_ids_pp.extend([move_dict['nomove'], 0])
-            pkm_p1_array = self.create_pkm_array(spcs=dex_nums[pkm.species],curr_health=pkm.hp,max_health=pkm.hp,curr_speed=pkm.speed,curr_special=pkm.special,curr_attack=pkm.attack,
+            pkm_p1_array = self.create_pkm_array(spcs=dex_nums[pkm.species],curr_health=pkm.hp,max_health=pkm.hp,base_speed=pkm.speed,curr_speed=pkm.speed,
+                                                 curr_special=pkm.special,base_attack=pkm.attack,curr_attack=pkm.attack,
                                                  curr_defense=pkm.defense,level=100,mv1n=move_ids_pp[0],mv1pp=[1],mv2n=move_ids_pp[2],mv2pp=move_ids_pp[3],mv3n=move_ids_pp[4],
                                                  mv3pp=move_ids_pp[5],mv4n=move_ids_pp[6],mv4pp=move_ids_pp[7])
 
@@ -167,7 +168,8 @@ class Pokebot_Gen1(ParallelEnv):
                     move_ids_pp.extend([move_dict[move.id], move.current_pp])
                 else:
                     move_ids_pp.extend([move_dict['nomove'], 0])
-            pkm_p2_array = self.create_pkm_array(spcs=dex_nums[pkm.species],player=1,curr_health=pkm.hp,max_health=pkm.hp,curr_speed=pkm.speed,curr_special=pkm.special,curr_attack=pkm.attack,
+            pkm_p2_array = self.create_pkm_array(spcs=dex_nums[pkm.species],player=1,curr_health=pkm.hp,max_health=pkm.hp,base_speed=pkm.speed,curr_speed=pkm.speed,
+                                                 curr_special=pkm.special,base_attack=pkm.attack,curr_attack=pkm.attack,
                                                  curr_defense=pkm.defense,level=100,mv1n=move_ids_pp[0],mv1pp=[1],mv2n=move_ids_pp[2],mv2pp=move_ids_pp[3],mv3n=move_ids_pp[4],
                                                  mv3pp=move_ids_pp[5],mv4n=move_ids_pp[6],mv4pp=move_ids_pp[7])
             
@@ -201,38 +203,76 @@ class Pokebot_Gen1(ParallelEnv):
         mon_name = rev_dex_nums[self.battle_array[row,0]]
         if player == 0:
             
-            self.p1_data[row,[0,7,8,9,10,11,12]] = [self.battle_array[row,0],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['Speed_Total'],stats.loc[mon_name]['Special_Total'],
+            self.p1_data[6+row,[0,7,8,9,10,11,12,13,14]] = [self.battle_array[row,0],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['Speed_Total'],
+                                                               stats.loc[mon_name]['Speed_Total'],stats.loc[mon_name]['Special_Total'],stats.loc[mon_name]['Attack_Total'],
                                                     stats.loc[mon_name]['Attack_Total'],stats.loc[mon_name]['Defense_Total']]
         if player == 1:
-            self.p2_data[row,[0,7,8,9,10,11,12]] = [self.battle_array[row,0],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['Speed_Total'],stats.loc[mon_name]['Special_Total'],
+            self.p2_data[6+row,[0,7,8,9,10,11,12,13,14]] = [self.battle_array[row,0],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['HP_Total'],stats.loc[mon_name]['Speed_Total'],
+                                                      stats.loc[mon_name]['Speed_Total'],stats.loc[mon_name]['Special_Total'],stats.loc[mon_name]['Attack_Total'],
                                                     stats.loc[mon_name]['Attack_Total'],stats.loc[mon_name]['Defense_Total']]
 
+    # def use_move(self,player,row,opponent):
+
     def step(self,actions):
+        
+        ### initialize variables (observation will come at the end)
+        truncations = {a: False for a in self.agents}
+        terminations = {a: False for a in self.agents}
+        infos = {a: {} for a in self.agents}
+        rewards = {a: 0 for a in self.agents}
         p1_action = actions['p1']
         p2_action = actions['p2']
 
+        ###    
         if self.turn == 0:
             p1_active = p1_action-4
             p2_active = p2_action-4
+            self.active_index = (p1_active,p2_active)
             self.p1_data[p1_active,2] = 1
             self.p2_data[p2_active,2] = 1
             self.battle_array[p1_active,2] = 1
             self.battle_array[p2_active+6,2] = 1
-            self.p1_data[6+p2_active,1] = self.battle_array[6+p2_active,1]
+            self.new_mon(0,p2_active)
+            self.new_mon(1,p1_active)
+            observations = {'p1':self.p1_data,'p2':self._p2_data}
+
+            return observations, rewards, terminations, truncations, infos
+        
+        ###Battle mechanics, unique situations are when both pokemon stay in and use a move, both switch, or one switches and the other attacks
+        
+
+        p1_active = self.active_index[0]
+        p2_active = self.active_index[1]        
+        if p1_action<=3 and p2_action<=3: #both players make a move
+            p1_active_array = self.battle_array[p1_active]
+            p1_eff_speed = math.floor(p1_active_array[9])
+            p2_active_array = self.battle_array[p2_active]
+            p2_eff_speed = math.floor(p2_active_array[9])
+            if p1_eff_speed>p2_eff_speed:
+                first_mover = 'player1'
+            elif p1_eff_speed<p2_eff_speed:
+                first_mover = 'player2'
+            else:
+                speed_tb = random.random()          
+                if speed_tb>0.5:
+                    first_mover = 'player1'
+                else:
+                    first_mover = 'player2'
+            # if first_mover == 'player1': 
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
-        high_values = np.array([255,1,1,31,15,15,63,1023,1023,1023,1023,1023,1023,127,15,15,15,15,31,3,255,127,255,127,255,127,255,127])
+        high_values = np.array([255,1,1,31,15,15,63,1023,1023,1023,1023,1023,1023,1023,1023,127,15,15,15,15,3,255,127,255,127,255,127,255,127,1023])
         high_matrix = np.tile(high_values, (12, 1)) 
         observation_spaces = {'p1':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 28), 
+                    shape=(12, 30), 
                     dtype=np.uint16
                 ), 'p2':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 28), 
+                    shape=(12, 30), 
                     dtype=np.uint16
                 )}
         return observation_spaces
