@@ -10,14 +10,16 @@ from pettingzoo import ParallelEnv
 import functools
 import pickle
 import math
+from damage import damage
 from copy import copy
 stats = pd.read_csv('pokemon-bst-totals.csv')
 stats['Name'] = stats['Name'].apply(str.lower)
 stats.set_index('Name',inplace=True)
 with open('pkm_data.pkl', 'rb') as f:
     loaded_data = pickle.load(f)
+
 move_dict = loaded_data['move_dict']
-pkm_moves_dict = loaded_data['pkm_moves_dict']
+pkm_mvs_dict = loaded_data['pkm_mvs_dict']
 dex_nums = loaded_data['dex_nums']
 rev_dex_nums = {v: k for k, v in dex_nums.items()}
 status_boosts_dict = loaded_data['status_boosts_dict']
@@ -211,8 +213,17 @@ class Pokebot_Gen1(ParallelEnv):
                                                       stats.loc[mon_name]['Speed_Total'],stats.loc[mon_name]['Special_Total'],stats.loc[mon_name]['Attack_Total'],
                                                     stats.loc[mon_name]['Attack_Total'],stats.loc[mon_name]['Defense_Total']]
 
-    # def use_move(self,player,row,opponent):
 
+
+    def reg_move(self,player,move,clamp_flag): #partial trapping moves need to be treated differently so we have clamp flag
+        move_data = Move(move,1) #use dict before function to convert num to string
+        power = move_data.base_power
+        if clamp_flag:
+            pass
+        else:
+            accuracy = move_data.accuracy
+            accuracy*=(255/256)
+            
     def step(self,actions):
         
         ### initialize variables (observation will come at the end)
