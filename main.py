@@ -29,7 +29,10 @@ alt_status_dict = loaded_data['alt_status_dict']
 status_dict = loaded_data['status_dict']
 pokemon_list = loaded_data['pokemon_list']
 partial_trapped_dict = loaded_data['partial_trapped_dict']
+boosts_dict = loaded_data['boost_dict']
 TypeChart = loaded_data['TypeChart']
+full_acc_moves = loaded_data['full_acc_moves']
+pokemon_types = loaded_data['pokemon_types']
 class Pokebot_Gen1(ParallelEnv):
     metadata = {'name':'pokemon_gen_1_v1'}
 
@@ -286,7 +289,14 @@ class Pokebot_Gen1(ParallelEnv):
             if move_category in [1,2]:
                 move_type = move.type.name
                 type_modifier = 1
-                # type_modifier*=
+                opp_pokemon = rev_dex_nums[opp_pkm_array[0]]
+                player_pkm = rev_dex_nums[pkm_array[0]]
+                for type in pokemon_types[opp_pokemon]:
+                    t = TypeChart[move_type]
+                    type_modifier*= t[type]
+                stab_mod = 1
+                if move_type in pokemon_types[player_pkm]:
+                    stab_mod = 1.5
 
 
                 move_power = move_data.base_power
@@ -295,11 +305,11 @@ class Pokebot_Gen1(ParallelEnv):
                         reflect_mod = 2
                     else:
                         reflect_mod = 1
-                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],atk_mod=pkm_array[18],
-                                                  dfs_mod=)
+                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],
+                                                  atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier)
                 else:
-
-                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=)
+                    pass
+                    # dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=)
                 
         
     def step(self,actions):
@@ -369,6 +379,6 @@ class Pokebot_Gen1(ParallelEnv):
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
         return Discrete(11)
-from pettingzoo.test import parallel_api_test
-env = Pokebot_Gen1()
-parallel_api_test(env,num_cycles=1)
+# from pettingzoo.test import parallel_api_test
+# env = Pokebot_Gen1()
+# parallel_api_test(env,num_cycles=1)
