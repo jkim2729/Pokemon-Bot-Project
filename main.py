@@ -10,7 +10,7 @@ from pettingzoo import ParallelEnv
 import functools
 import pickle
 import math
-from damage import damage
+from damage import damage,select_dmg_value
 from copy import copy
 stats = pd.read_csv('pokemon-bst-totals.csv')
 stats['Name'] = stats['Name'].apply(str.lower)
@@ -19,6 +19,7 @@ with open('pkm_data.pkl', 'rb') as f:
     loaded_data = pickle.load(f)
 
 move_dict = loaded_data['move_dict']
+rev_move_dict = {v: k for k, v in move_dict.items()}
 pkm_mvs_dict = loaded_data['pkm_mvs_dict']
 dex_nums = loaded_data['dex_nums']
 rev_dex_nums = {v: k for k, v in dex_nums.items()}
@@ -28,6 +29,7 @@ alt_status_dict = loaded_data['alt_status_dict']
 status_dict = loaded_data['status_dict']
 pokemon_list = loaded_data['pokemon_list']
 partial_trapped_dict = loaded_data['partial_trapped_dict']
+TypeChart = loaded_data['TypeChart']
 class Pokebot_Gen1(ParallelEnv):
     metadata = {'name':'pokemon_gen_1_v1'}
 
@@ -41,14 +43,14 @@ class Pokebot_Gen1(ParallelEnv):
         Current Status Condition (Note:sleep turns are included here),Additional Status Conditions (Confusion/Leech Seed), Partial Trapped Turns, Toxic Counter,
           Current Health, Max Health, Base Speed, Current Speed, Current Special, Base Attack, Current Attack, Current Defense, Level, Speed boosts, Special boosts, 
           Attack boosts, Defense boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
-          Move 3 Name, Move 3 PP, Move 4 Name, Move 4 PP,prev_dmg (used for counter)]
+          Move 3 Name, Move 3 PP, Move 4 Name, Move 4 PP,prev_dmg (used for counter),substitute_hp (0 if no substitute is in place)]
           
         '''
         
-        self._p1_data = np.zeros(shape=(12,30),dtype=np.uint16)
-        self._p2_data = np.zeros(shape=(12,30),dtype=np.uint16)
+        self._p1_data = np.zeros(shape=(12,31),dtype=np.uint16)
+        self._p2_data = np.zeros(shape=(12,31),dtype=np.uint16)
         self._finished = None
-        self._battle_array = np.zeros(shape=(12,30),dtype=np.uint16)
+        self._battle_array = np.zeros(shape=(12,31),dtype=np.uint16)
         self.possible_agents = ['p1','p2']
         self._turn = 0
         self._active_index = (-1,-1)
@@ -215,15 +217,91 @@ class Pokebot_Gen1(ParallelEnv):
 
 
 
-    def reg_move(self,player,move,clamp_flag): #partial trapping moves need to be treated differently so we have clamp flag
+    def reg_move(self,player,rows,move,clamp_flag): #partial trapping moves need to be treated differently so we have clamp flag
         move_data = Move(move,1) #use dict before function to convert num to string
-        power = move_data.base_power
-        if clamp_flag:
+        move_index = rev_move_dict[move_data]
+
+        if player == 0:
+            pkm_array = self.p1_data[rows[0]]
+            opp_pkm_array = self.p2_data[rows[1]]
+        elif player == 1:
+            pkm_array = self.p2_data[rows[0]]
+            opp_pkm_array = self.p1_data[rows[1]]
+
+        else:
+            raise ValueError('Unknown Value for player')
+
+        if move_index == pkm_array[21]:
+            array_location = pkm_array[21]
+        elif move_index == pkm_array[23]:
+            array_location = pkm_array[23]
+        elif move_index == pkm_array[25]:
+            array_location = pkm_array[25]
+        elif move_index == pkm_array[27]:
+            array_location = pkm_array[27]
+        else:
+            raise ValueError('Invalid Move')
+
+
+
+        ### check to see if we actually get to use a move
+        pkm_status = pkm_array[3]
+        if pkm_status in set([6,7,8,9,10,11]): #sleep
+
+            wakeup_chance = (1)/(13-pkm_status)
+            sleep_num = random.random()
+            if wakeup_chance>sleep_num:
+                pkm_array[3] = 2
+            else:
+                pkm_array[3]+=1
+            return False
+        elif pkm_status == 12: #last turn of sleep
+            pkm_array[3] = 2
+            return False
+
+        elif pkm_status == 4: #paralysis
+            para_num = random.random()
+            if para_num <0.25:
+                
+                return False
+        elif pkm_status == 3: #freeze
+
+            return False
+        
+
+        if clamp_flag: #clamp flag is true 
             pass
         else:
-            accuracy = move_data.accuracy
-            accuracy*=(255/256)
+            pkm_array[array_location+1] -=1
+            if move in loaded_data['full_acc_moves']:
+                accuracy = 1
+            else:
+                accuracy = move_data.accuracy
+                accuracy*=(255/256)
+            acc_num = random.random()
             
+            if acc_num> accuracy: #move missed
+                return False
+            move_category = move_data.category.value
+            if move_category in [1,2]:
+                move_type = move.type.name
+                type_modifier = 1
+                # type_modifier*=
+
+
+                move_power = move_data.base_power
+                if move_category == 1:
+                    if pkm_array[20] == 1 or pkm_array[20] == 3:
+                        reflect_mod = 2
+                    else:
+                        reflect_mod = 1
+                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],atk_mod=pkm_array[18],
+                                                  dfs_mod=)
+                else:
+
+                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=)
+                
+        
     def step(self,actions):
         
         ### initialize variables (observation will come at the end)
@@ -273,17 +351,17 @@ class Pokebot_Gen1(ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
-        high_values = np.array([255,1,1,31,15,15,63,1023,1023,1023,1023,1023,1023,1023,1023,127,15,15,15,15,3,255,127,255,127,255,127,255,127,1023])
-        high_matrix = np.tile(high_values, (12, 1)) 
+        high_values = np.array([255,1,1,31,15,15,63,1023,1023,1023,1023,1023,1023,1023,1023,127,15,15,15,15,3,255,127,255,127,255,127,255,127,1023,511])
+        high_matrix = np.tile(high_values, (12, 31)) 
         observation_spaces = {'p1':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 30), 
+                    shape=(12, 31), 
                     dtype=np.uint16
                 ), 'p2':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 30), 
+                    shape=(12, 31), 
                     dtype=np.uint16
                 )}
         return observation_spaces
