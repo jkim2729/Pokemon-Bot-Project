@@ -55,5 +55,7 @@ def select_dmg_value(level,speed,power,atk,dfs,atk_mod = 1,dfs_mod = 1,stab = 1,
 
     return final_val
 
+def confusion_dmg(level,atk,dfs,atk_mod,dfs_mod):
 
-
+    dmg_val = max(damage(level=level,crit=False,power=40,atk=atk,dfs=dfs,atk_mod=atk_mod,dfs_mod=dfs_mod,stab=1,type_mult=1))
+    return dmg_val

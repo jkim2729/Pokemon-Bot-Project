@@ -10,7 +10,7 @@ from pettingzoo import ParallelEnv
 import functools
 import pickle
 import math
-from damage import damage,select_dmg_value
+from damage import damage,select_dmg_value,confusion_dmg
 from copy import copy
 stats = pd.read_csv('pokemon-bst-totals.csv')
 stats['Name'] = stats['Name'].apply(str.lower)
@@ -45,15 +45,15 @@ class Pokebot_Gen1(ParallelEnv):
         We represent it as [Pokemon Species (dex number), Opponent or Player Pokemon(0 represents player and 1 represents opponent), Currently Active(0 is false, 1 is true), 
         Current Status Condition (Note:sleep turns are included here),Additional Status Conditions (Confusion/Leech Seed), Partial Trapped Turns, Toxic Counter,
           Current Health, Max Health, Base Speed, Current Speed, Current Special, Base Attack, Current Attack, Current Defense, Level, Speed boosts, Special boosts, 
-          Attack boosts, Defense boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
+          Attack boosts, Defense boosts, Accuracy boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
           Move 3 Name, Move 3 PP, Move 4 Name, Move 4 PP,prev_dmg (used for counter),substitute_hp (0 if no substitute is in place)]
           
         '''
         
-        self._p1_data = np.zeros(shape=(12,31),dtype=np.uint16)
-        self._p2_data = np.zeros(shape=(12,31),dtype=np.uint16)
+        self._p1_data = np.zeros(shape=(12,32),dtype=np.uint16)
+        self._p2_data = np.zeros(shape=(12,32),dtype=np.uint16)
         self._finished = None
-        self._battle_array = np.zeros(shape=(12,31),dtype=np.uint16)
+        self._battle_array = np.zeros(shape=(12,32),dtype=np.uint16)
         self.possible_agents = ['p1','p2']
         self._turn = 0
         self._active_index = (-1,-1)
@@ -127,12 +127,14 @@ class Pokebot_Gen1(ParallelEnv):
     def turn(self,updated_turn):
         self._turn = updated_turn
 
-    def create_pkm_array(self,spcs = 0, player = 0, active = 0, curr_status = 0, add_status = 0, partial_trap = 0, toxic_counter = 1, curr_health = 1000, max_health = 1000, base_speed = 0,
-                         curr_speed = 0, curr_special = 0, base_attack = 0, curr_attack = 0, curr_defense = 0, level = 0, speed_boosts = 0, special_boosts = 0, attack_boosts = 0, defense_boosts = 0,
-                         reflghtscreen = 0, mv1n = 1, mv1pp = 100, mv2n = 1, mv2pp = 100, mv3n = 1, mv3pp = 100, mv4n = 1,mv4pp = 100):
+    def create_pkm_array(self,spcs = 0, player = 0, active = 0, curr_status = 0, add_status = 0, partial_trap = 0, toxic_counter = 1, curr_health = 1000, max_health = 1000, 
+                         base_speed = 0,curr_speed = 0, curr_special = 0, base_attack = 0, curr_attack = 0, curr_defense = 0, level = 0, 
+                         speed_boosts = 0, special_boosts = 0, attack_boosts = 0, defense_boosts = 0, accuracy_boosts = 0,
+                         reflghtscreen = 0, mv1n = 1, mv1pp = 100, mv2n = 1, mv2pp = 100, mv3n = 1, mv3pp = 100, mv4n = 1,mv4pp = 100,substitute_hp = 0):
         
         return np.array([spcs,player,active,curr_status,add_status,partial_trap,toxic_counter,curr_health,max_health,base_speed,curr_speed,curr_special,base_attack,curr_attack,
-                         curr_defense,level,speed_boosts,special_boosts,attack_boosts,defense_boosts,reflghtscreen,mv1n,mv1pp,mv2n,mv2pp,mv3n,mv3pp,mv4n,mv4pp],dtype= np.uint16)
+                         curr_defense,level,speed_boosts,special_boosts,attack_boosts,defense_boosts,accuracy_boosts,reflghtscreen,
+                         mv1n,mv1pp,mv2n,mv2pp,mv3n,mv3pp,mv4n,mv4pp,substitute_hp],dtype= np.uint16)
 
     def reset(self, seed = None, options = {}):
 
@@ -234,14 +236,14 @@ class Pokebot_Gen1(ParallelEnv):
         else:
             raise ValueError('Unknown Value for player')
 
-        if move_index == pkm_array[21]:
-            array_location = pkm_array[21]
-        elif move_index == pkm_array[23]:
-            array_location = pkm_array[23]
-        elif move_index == pkm_array[25]:
-            array_location = pkm_array[25]
-        elif move_index == pkm_array[27]:
-            array_location = pkm_array[27]
+        if move_index == pkm_array[22]:
+            array_location = pkm_array[22]
+        elif move_index == pkm_array[24]:
+            array_location = pkm_array[24]
+        elif move_index == pkm_array[26]:
+            array_location = pkm_array[26]
+        elif move_index == pkm_array[28]:
+            array_location = pkm_array[28]
         else:
             raise ValueError('Invalid Move')
 
@@ -270,7 +272,18 @@ class Pokebot_Gen1(ParallelEnv):
         elif pkm_status == 3: #freeze
 
             return False
-        
+        alt_status_num =opp_pkm_array[4]
+        if 'confusion' in alt_status_dict[alt_status_num]:
+            confusion_num = random.random()
+            if confusion_num<0.5:
+                if pkm_array[21] == 1 or pkm_array[21] == 3:
+                        reflect_mod = 2
+                else:
+                        reflect_mod = 1
+                confusion_dmg = confusion_dmg(level = pkm_array[15],atk=pkm_array[13],dfs=opp_pkm_array[14],
+                                                  atk_mod=boosts_dict[pkm_array[18]],dfs_mod= boosts_dict[pkm_array[19]])
+                # if opp
+
 
         if clamp_flag: #clamp flag is true 
             pass
@@ -281,6 +294,7 @@ class Pokebot_Gen1(ParallelEnv):
             else:
                 accuracy = move_data.accuracy
                 accuracy*=(255/256)
+                accuracy*=boosts_dict[pkm_array[20]]
             acc_num = random.random()
             
             if acc_num> accuracy: #move missed
@@ -300,16 +314,55 @@ class Pokebot_Gen1(ParallelEnv):
 
 
                 move_power = move_data.base_power
-                if move_category == 1:
-                    if pkm_array[20] == 1 or pkm_array[20] == 3:
+                if move == 'counter':
+
+                    dmg_amount = 2*pkm_array[-2]
+                
+                elif move_data.damage>0:
+                    dmg_amount = move_data.damage
+                
+                elif move_category == 3:
+                    if move == 'leechseed':
+                        
+                        if alt_status_num == 0:
+                            alt_status_num =1
+                        elif alt_status_num == 2:
+                            alt_status_num = 4
+                        elif alt_status_num == 3:
+                            alt_status_num = 5
+                        elif alt_status_num == 6:
+                            alt_status_num = 7
+                        opp_pkm_array[4] = alt_status_num
+                        return False
+
+                    opp_pkm_status = opp_pkm_array[3]
+                    if move == 'toxic':
+                        
+                        if opp_pkm_status == 0:
+                            opp_pkm_array[3] == 13
+                        return False
+                    status_num = move_data.status.value
+                    if status_num:
+                        if pkm_status == 0:
+                            pkm_array[3] == status_num
+                        return False
+                    
+                        
+                elif move_category == 1:
+                    if pkm_array[21] == 1 or pkm_array[21] == 3:
                         reflect_mod = 2
                     else:
                         reflect_mod = 1
                     dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],
                                                   atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier)
-                else:
-                    pass
-                    # dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=)
+                elif move_category == 2:
+                    if pkm_array[21] == 2 or pkm_array[21] == 3:
+                        reflect_mod = 2
+                    else:
+                        reflect_mod = 1
+                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[11],dfs=opp_pkm_array[11],
+                                                  atk_mod=boosts_dict[pkm_array[17]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[17]],stab= stab_mod, type_mult= type_modifier)
+
                 
         
     def step(self,actions):
@@ -362,16 +415,16 @@ class Pokebot_Gen1(ParallelEnv):
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
         high_values = np.array([255,1,1,31,15,15,63,1023,1023,1023,1023,1023,1023,1023,1023,127,15,15,15,15,3,255,127,255,127,255,127,255,127,1023,511])
-        high_matrix = np.tile(high_values, (12, 31)) 
+        high_matrix = np.tile(high_values, (12, 32)) 
         observation_spaces = {'p1':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 31), 
+                    shape=(12, 32), 
                     dtype=np.uint16
                 ), 'p2':Box(
                     low=0,  
                     high=high_matrix,  
-                    shape=(12, 31), 
+                    shape=(12, 32), 
                     dtype=np.uint16
                 )}
         return observation_spaces
