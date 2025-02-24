@@ -97,7 +97,10 @@ class Pokemon_s():
     @property
     def move_4(self):
         return self._move_4
-    
+banned_moves = ['guillotine','whirlwind','stomp','fly','jumpkick','rollingkick',
+                'thrash','roar','disable','solarbeam','mist','petaldance'
+                ,'haze','focusenergy','bide','metronome','mirrormove','boneclub',
+                'highjumpkick','transform','splash','']
 def team_generator(seed_num=None):
 
     random.seed(seed_num)
@@ -113,7 +116,7 @@ def team_generator(seed_num=None):
     mon_stats = []
     mon_levels = [100,100,100,100,100,100]
     for mon in mon_list:
-
+        valid_move_list = [x for x in pkm_mvs_dict[mon] if x not in banned_moves] 
         mvs = random.sample(pkm_mvs_dict[mon],min(4,len(pkm_mvs_dict[mon])))
 
         stats_dict = {'atk': stats.loc[mon]['Attack_Total'] , 'def': stats.loc[mon]['Defense_Total'] , 'hp': stats.loc[mon]['HP_Total'],
