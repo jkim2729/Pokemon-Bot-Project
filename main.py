@@ -225,6 +225,7 @@ class Pokebot_Gen1(ParallelEnv):
         move_data = Move(move,1) #use dict before function to convert num to string
         move_index = rev_move_dict[move_data]
         flinch_status = False
+        clamp_status = False
         player_fnt = False
         opp_fnt = False
         if player == 0:
@@ -264,20 +265,20 @@ class Pokebot_Gen1(ParallelEnv):
             else:
                 opp_view_pkm_array+=1
                 pkm_array[3]+=1
-            return (player_fnt,opp_fnt,flinch_status)
+            return (player_fnt,opp_fnt,flinch_status,clamp_status)
         elif pkm_status == 12: #last turn of sleep
             pkm_array[3] = 2
             opp_view_pkm_array = 2
-            return (player_fnt,opp_fnt,flinch_status)
+            return (player_fnt,opp_fnt,flinch_status,clamp_status)
 
         elif pkm_status == 4: #paralysis
             para_num = random.random()
             if para_num <0.25:
                 
-                return (player_fnt,opp_fnt,flinch_status)
+                return (player_fnt,opp_fnt,flinch_status,clamp_status)
         elif pkm_status == 3: #freeze
 
-            return (player_fnt,opp_fnt,flinch_status)
+            return (player_fnt,opp_fnt,flinch_status,clamp_status)
         alt_status_num =opp_pkm_array[4]
         if 'confusion' in alt_status_dict[alt_status_num]:
             confusion_num = random.random()
@@ -293,7 +294,7 @@ class Pokebot_Gen1(ParallelEnv):
                     opp_sub_hp = max(0,opp_sub_hp-confusion_dmg)
                     play_view_opp_array[-1] = opp_sub_hp
                     opp_pkm_array[-1] = opp_sub_hp
-                    return (player_fnt,opp_fnt,flinch_status)
+                    return (player_fnt,opp_fnt,flinch_status,clamp_status)
                 elif pkm_array[-1]>0:
                     confusion_dmg = 0
                 curr_health = pkm_array[7]
@@ -301,389 +302,454 @@ class Pokebot_Gen1(ParallelEnv):
                 pkm_array[7] = curr_health
                 opp_view_pkm_array[7] = curr_health
                 if curr_health>0:
-                    return (player_fnt,opp_fnt,flinch_status)
+                    return (player_fnt,opp_fnt,flinch_status,clamp_status)
                 else:
                     opp_view_pkm_array[3] = 2
                     pkm_array[3] = 2
                     opp_fnt = True
-                    return (player_fnt,opp_fnt,flinch_status)
+                    return (player_fnt,opp_fnt,flinch_status,clamp_status)
 
 
-        if clamp_flag: #clamp flag is true 
-            pass
-        else:
+        move_type = move.type.name
+        move_power = move_data.base_power
+        if move_type!= 'NORMAL' or move_type!= 'FIGHTING' or move_power == 0:
+            opp_pkm_array[-2] = 0
+            play_view_opp_array[-2] = 0
+
+        if move not in ['clamp','wrap','bind','firespin']:
+            opp_pkm_array[5] = 0
+            
             opp_view_pkm_array[array_location+1] -=1
             pkm_array[array_location+1] -=1
-            if move in loaded_data['full_acc_moves']:
-                accuracy = 1
-            else:
-                accuracy = move_data.accuracy
-                accuracy*=(255/256)
-                accuracy*=boosts_dict[pkm_array[20]]
-            acc_num = random.random()
+        if clamp_flag:
+            opp_view_pkm_array[array_location+1] -=1
+            pkm_array[array_location+1] -=1
+        if move in loaded_data['full_acc_moves']:
+            accuracy = 1
+        else:
+            accuracy = move_data.accuracy
+            accuracy*=(255/256)
+            accuracy*=boosts_dict[pkm_array[20]]
+        acc_num = random.random()
+        
+        if acc_num> accuracy: #move missed
+            return (player_fnt,opp_fnt,flinch_status,clamp_status)
+        move_category = move_data.category.value
+        if move_category in [1,2]:
+
+            type_modifier = 1
+            opp_pokemon = rev_dex_nums[opp_pkm_array[0]]
+            player_pkm = rev_dex_nums[pkm_array[0]]
+            for type in pokemon_types[opp_pokemon]:
+                t = TypeChart[move_type]
+                type_modifier*= t[type]
+            stab_mod = 1
+            if move_type in pokemon_types[player_pkm]:
+                stab_mod = 1.5
+
+
             
-            if acc_num> accuracy: #move missed
-                return (player_fnt,opp_fnt,flinch_status)
-            move_category = move_data.category.value
-            if move_category in [1,2]:
-                move_type = move.type.name
-                type_modifier = 1
-                opp_pokemon = rev_dex_nums[opp_pkm_array[0]]
-                player_pkm = rev_dex_nums[pkm_array[0]]
-                for type in pokemon_types[opp_pokemon]:
-                    t = TypeChart[move_type]
-                    type_modifier*= t[type]
-                stab_mod = 1
-                if move_type in pokemon_types[player_pkm]:
-                    stab_mod = 1.5
+            if move == 'counter':
 
-
-                move_power = move_data.base_power
-                if move == 'counter':
-
-                    dmg_amount = 2*pkm_array[-2]
-                elif move == 'superfang':
-                    dmg_amount = opp_pkm_array[7]//2
-                elif move_data.damage>0:
-                    if move_data.damage == 'level':
-                        dmg_amount = opp_pkm_array[15]
-                    else:
-                        dmg_amount = move_data.damage
-                elif move == 'explosion' or 'selfdestruct':
-                    if pkm_array[21] == 1 or pkm_array[21] == 3:
-                        reflect_mod = 2
-                    else:
-                        reflect_mod = 1
-                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14]//2,
-                                                  atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier)
-                    pkm_array[7] = 0 
-                    opp_view_pkm_array[7] = 0                    
-
-                elif move_category == 1:
-                    if pkm_array[21] == 1 or pkm_array[21] == 3:
-                        reflect_mod = 2
-                    else:
-                        reflect_mod = 1
-                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],
-                                                  atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier)
-                elif move_category == 2:
-                    if pkm_array[21] == 2 or pkm_array[21] == 3:
-                        reflect_mod = 2
-                    else:
-                        reflect_mod = 1
-                    dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[11],dfs=opp_pkm_array[11],
-                                                  atk_mod=boosts_dict[pkm_array[17]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[17]],stab= stab_mod, type_mult= type_modifier)
-                if move_data.secondary:
-                    sec_dict = move_data.secondary
-                    chance = sec_dict['chance']
-                    sec_num = random.random()
-                    if sec_num<chance:
-                        if 'boosts' in sec_dict:
-                            move_boosts = sec_dict['boosts']
-                    
-                            if 'spe' in move_boosts:
-                                
-                                boost_num = move_boosts['spe']
-                                if boost_num>0 and opp_pkm_array == 13:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                elif boost_num< 0 and opp_pkm_array == 1:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                
-                                opp_pkm_array[16] = boost_num+opp_pkm_array[16]
-                                opp_pkm_array[10] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[16]]*opp_pkm_array[9])))
-                                play_view_opp_array[16] = opp_pkm_array[16]
-                                play_view_opp_array[10] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[16]]*play_view_opp_array[9])))
-                                if opp_pkm_array[3] == 1:
-                                    opp_pkm_array[13]//=2
-                                    play_view_opp_array[13]//=2
-                                elif opp_pkm_array[3] == 4:
-                                    opp_pkm_array[10]//=4
-                                    play_view_opp_array[10]//=4
-                            elif 'spd' in move_boosts:
-                                boost_num = move_boosts['spd']
-                                if boost_num>0 and opp_pkm_array == 13:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                elif boost_num< 0 and opp_pkm_array == 1:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                
-                                opp_pkm_array[17] = boost_num+opp_pkm_array[17]
-                                play_view_opp_array[17] = opp_pkm_array[17]
-                                if opp_pkm_array[3] == 1:
-                                    opp_pkm_array[13]//=2
-                                    play_view_opp_array[13]//=2
-                                elif opp_pkm_array[3] == 4:
-                                    opp_pkm_array[10]//=4
-                                    play_view_opp_array[10]//=4
-
-                            elif 'atk' in move_boosts:
-                                
-                                boost_num = move_boosts['atk']
-                                if boost_num>0 and opp_pkm_array == 13:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                elif boost_num< 0 and opp_pkm_array == 1:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                
-                                opp_pkm_array[18] = boost_num+opp_pkm_array[18]
-                                opp_pkm_array[13] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[18]]*opp_pkm_array[12])))
-                                play_view_opp_array[18] = opp_pkm_array[18]
-                                play_view_opp_array[13] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[18]]*play_view_opp_array[12])))
-                                if opp_pkm_array[3] == 1:
-                                    opp_pkm_array[13]//=2
-                                    play_view_opp_array[13]//=2
-                                elif opp_pkm_array[3] == 4:
-                                    opp_pkm_array[10]//=4
-                                    play_view_opp_array[10]//=4
-                            elif 'def' in move_boosts:
-                                
-                                boost_num = move_boosts['def']
-                                if boost_num>0 and opp_pkm_array == 13:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                elif boost_num< 0 and opp_pkm_array == 1:
-                                    return (player_fnt,opp_fnt,flinch_status)
-                                
-                                opp_pkm_array[19] = boost_num+opp_pkm_array[19]
-                                play_view_opp_array[19] = opp_pkm_array[19]
-                                if opp_pkm_array[3] == 1:
-                                    opp_pkm_array[13]//=2
-                                    play_view_opp_array[13]//=2
-                                elif opp_pkm_array[3] == 4:
-                                    opp_pkm_array[10]//=4
-                                    play_view_opp_array[10]//=4
-                        
-                        if 'status' in sec_dict:
-                            status_num = move_data.status.value
-                            if opp_pkm_status == 0:
-                                opp_pkm_array[3] == status_num
-                        
-                        if 'volatileStatus' in sec_dict:
-                            if sec_dict['volatileStatus'] == 'confusion':
-                                if alt_status_num == 0:
-                                    alt_status_num =2
-                                elif alt_status_num == 1:
-                                    alt_status_num = 7
-                                elif alt_status_num == 6:
-                                    alt_status_num = 12
-                                elif alt_status_num == 11:
-                                    alt_status_num = 16
-                                opp_pkm_array[4] = alt_status_num
-
-                            elif sec_dict['volatilteStatus'] == 'flinch':
-                                flinch_status = True
-                if move_data.n_hit == (2,2):
-                    dmg_amount = dmg_amount*2
-                elif move_data.n_hit == (2,5):
-                    num_hit_chance = random.random()
-                    if num_hit_chance < 0.375:
-                        dmg_amount*=2
-                    elif num_hit_chance < 0.75:
-                        dmg_amount*=3
-                    elif num_hit_chance < 0.875:
-                        dmg_amount*=4
-                    elif num_hit_chance < 1:
-                        dmg_amount*=5
-                if play_view_opp_array[-1]>0:
-                    opp_pkm_array[-1] = max(0,opp_pkm_array[-1]-dmg_amount)
-                    play_view_opp_array[-1] = max(0,play_view_opp_array[-1]-dmg_amount)
+                dmg_amount = 2*pkm_array[-2]
+                pkm_array[-2] = 0
+                opp_view_pkm_array[-2] = 0
+            elif move == 'superfang':
+                dmg_amount = opp_pkm_array[7]//2
+            elif move_data.damage>0:
+                if move_data.damage == 'level':
+                    dmg_amount = opp_pkm_array[15]
                 else:
-                    opp_pkm_array[7] = max(0,opp_pkm_array[7]-dmg_amount)
-                    play_view_opp_array[7] = max(0,play_view_opp_array[7]-dmg_amount)
+                    dmg_amount = move_data.damage
+            
+            
+            elif move in ['clamp','wrap','bind','firespin']:
+                clamp_status = True
+                partial_trap_str = partial_trapped_dict[opp_pkm_array[5]]
+                if partial_trap_str == 'healthy':
+                    if move_category == 1:
+                        if pkm_array[21] == 1 or pkm_array[21] == 3:
+                            reflect_mod = 2
+                        else:
+                            reflect_mod = 1
+                        dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],
+                                                        atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier)
+                    elif move_category == 2:
+                        if pkm_array[21] == 2 or pkm_array[21] == 3:
+                            reflect_mod = 2
+                        else:
+                            reflect_mod = 1
+                        dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[11],dfs=opp_pkm_array[11],
+                                                    atk_mod=boosts_dict[pkm_array[17]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[17]],stab= stab_mod, type_mult= type_modifier)
+                else:
+                    clamp_crit = partial_trap_str[0]
+                    if move_category == 1:
+                        if pkm_array[21] == 1 or pkm_array[21] == 3:
+                            reflect_mod = 2
+                        else:
+                            reflect_mod = 1
+                        dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],
+                                                        atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier,crit_status=clamp_crit)
+                    elif move_category == 2:
+                        if pkm_array[21] == 2 or pkm_array[21] == 3:
+                            reflect_mod = 2
+                        else:
+                            reflect_mod = 1
+                        dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[11],dfs=opp_pkm_array[11],
+                                                    atk_mod=boosts_dict[pkm_array[17]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[17]],stab= stab_mod, type_mult= type_modifier,crit_status=clamp_crit)
 
-                if opp_pkm_array[7] == 0:
-                    opp_pkm_array[3] = 2
-                    play_view_opp_array[3] = 2
-                    opp_fnt = True
-                if pkm_array[7] == 0:
-                    pkm_array[3] = 2
-                    opp_view_pkm_array[3] = 2
-                    player_fnt = True
+            elif move == 'explosion' or 'selfdestruct':
+                if pkm_array[21] == 1 or pkm_array[21] == 3:
+                    reflect_mod = 2
+                else:
+                    reflect_mod = 1
+                dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14]//2,
+                                                atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier)
+                pkm_array[7] = 0 
+                opp_view_pkm_array[7] = 0                    
+
+            elif move_category == 1:
+                if pkm_array[21] == 1 or pkm_array[21] == 3:
+                    reflect_mod = 2
+                else:
+                    reflect_mod = 1
+                dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[13],dfs=opp_pkm_array[14],
+                                                atk_mod=boosts_dict[pkm_array[18]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[19]],stab= stab_mod, type_mult= type_modifier)
+            elif move_category == 2:
+                if pkm_array[21] == 2 or pkm_array[21] == 3:
+                    reflect_mod = 2
+                else:
+                    reflect_mod = 1
+                dmg_amount = select_dmg_value(level = pkm_array[15],speed=pkm_array[9],power = move_power,atk=pkm_array[11],dfs=opp_pkm_array[11],
+                                                atk_mod=boosts_dict[pkm_array[17]],dfs_mod= reflect_mod*boosts_dict[opp_pkm_array[17]],stab= stab_mod, type_mult= type_modifier)
+                if move_type == 'FIRE' and dmg_amount>0 and opp_pkm_array[3] == 3:
+                    opp_pkm_array[3] = 0
+
+            if move_type == 'NORMAL' or move_type == 'FIGHTING':
+                if dmg_amount>0:
+                    opp_pkm_array[-2] = dmg_amount
+                    play_view_opp_array[-2] = dmg_amount
+            if dmg_amount == 0:
+                pkm_array[-2] = 0
+                opp_view_pkm_array[-2] = 0
+
+            
+            if move_data.secondary:
+                sec_dict = move_data.secondary
+                chance = sec_dict['chance']
+                sec_num = random.random()
+                if sec_num<chance:
+                    if 'boosts' in sec_dict:
+                        move_boosts = sec_dict['boosts']
                 
-                return(player_fnt,opp_fnt,flinch_status)
+                        if 'spe' in move_boosts:
+                            
+                            boost_num = move_boosts['spe']
+                            if boost_num>0 and opp_pkm_array == 13:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            elif boost_num< 0 and opp_pkm_array == 1:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            
+                            opp_pkm_array[16] = boost_num+opp_pkm_array[16]
+                            opp_pkm_array[10] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[16]]*opp_pkm_array[9])))
+                            play_view_opp_array[16] = opp_pkm_array[16]
+                            play_view_opp_array[10] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[16]]*play_view_opp_array[9])))
+                            if opp_pkm_array[3] == 1:
+                                opp_pkm_array[13]//=2
+                                play_view_opp_array[13]//=2
+                            elif opp_pkm_array[3] == 4:
+                                opp_pkm_array[10]//=4
+                                play_view_opp_array[10]//=4
+                        elif 'spd' in move_boosts:
+                            boost_num = move_boosts['spd']
+                            if boost_num>0 and opp_pkm_array == 13:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            elif boost_num< 0 and opp_pkm_array == 1:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            
+                            opp_pkm_array[17] = boost_num+opp_pkm_array[17]
+                            play_view_opp_array[17] = opp_pkm_array[17]
+                            if opp_pkm_array[3] == 1:
+                                opp_pkm_array[13]//=2
+                                play_view_opp_array[13]//=2
+                            elif opp_pkm_array[3] == 4:
+                                opp_pkm_array[10]//=4
+                                play_view_opp_array[10]//=4
 
-
-            elif move_category == 3:
-                if move == 'confuseray' or move == 'supersonic':
+                        elif 'atk' in move_boosts:
+                            
+                            boost_num = move_boosts['atk']
+                            if boost_num>0 and opp_pkm_array == 13:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            elif boost_num< 0 and opp_pkm_array == 1:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            
+                            opp_pkm_array[18] = boost_num+opp_pkm_array[18]
+                            opp_pkm_array[13] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[18]]*opp_pkm_array[12])))
+                            play_view_opp_array[18] = opp_pkm_array[18]
+                            play_view_opp_array[13] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[18]]*play_view_opp_array[12])))
+                            if opp_pkm_array[3] == 1:
+                                opp_pkm_array[13]//=2
+                                play_view_opp_array[13]//=2
+                            elif opp_pkm_array[3] == 4:
+                                opp_pkm_array[10]//=4
+                                play_view_opp_array[10]//=4
+                        elif 'def' in move_boosts:
+                            
+                            boost_num = move_boosts['def']
+                            if boost_num>0 and opp_pkm_array == 13:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            elif boost_num< 0 and opp_pkm_array == 1:
+                                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                            
+                            opp_pkm_array[19] = boost_num+opp_pkm_array[19]
+                            play_view_opp_array[19] = opp_pkm_array[19]
+                            if opp_pkm_array[3] == 1:
+                                opp_pkm_array[13]//=2
+                                play_view_opp_array[13]//=2
+                            elif opp_pkm_array[3] == 4:
+                                opp_pkm_array[10]//=4
+                                play_view_opp_array[10]//=4
                     
-                    if alt_status_num == 0:
-                        alt_status_num =2
-                    elif alt_status_num == 1:
-                        alt_status_num = 7
-                    elif alt_status_num == 6:
-                        alt_status_num = 12
-                    elif alt_status_num == 11:
-                        alt_status_num = 16
-                    opp_pkm_array[4] = alt_status_num
-                    return (player_fnt,opp_fnt,flinch_status)
-                elif move == 'leechseed':
-
-                    if alt_status_num == 0:
-                        alt_status_num =1
-                    elif alt_status_num in [2,3,4,5,6]:
-                        alt_status_num+=5
-                    elif alt_status_num in [12,13,14,15]:
-                        alt_status_num+=4
-                    opp_pkm_array[4] = alt_status_num
-                    return (player_fnt,opp_fnt,flinch_status)
-
-                opp_pkm_status = opp_pkm_array[3]
-                if move == 'toxic':
+                    if 'status' in sec_dict:
+                        status_num = move_data.status.value
+                        if opp_pkm_status == 0:
+                            opp_pkm_array[3] == status_num
                     
-                    if opp_pkm_status == 0:
-                        opp_pkm_array[3] == 13
-                    return (player_fnt,opp_fnt,flinch_status)
+                    if 'volatileStatus' in sec_dict:
+                        if sec_dict['volatileStatus'] == 'confusion':
+                            if alt_status_num == 0:
+                                alt_status_num =2
+                            elif alt_status_num == 1:
+                                alt_status_num = 7
+                            elif alt_status_num == 6:
+                                alt_status_num = 12
+                            elif alt_status_num == 11:
+                                alt_status_num = 16
+                            opp_pkm_array[4] = alt_status_num
+
+                        elif sec_dict['volatilteStatus'] == 'flinch':
+                            flinch_status = True
+            if move_data.n_hit == (2,2):
+                dmg_amount = dmg_amount*2
+            elif move_data.n_hit == (2,5):
+                num_hit_chance = random.random()
+                if num_hit_chance < 0.375:
+                    dmg_amount*=2
+                elif num_hit_chance < 0.75:
+                    dmg_amount*=3
+                elif num_hit_chance < 0.875:
+                    dmg_amount*=4
+                elif num_hit_chance < 1:
+                    dmg_amount*=5
+            if play_view_opp_array[-1]>0:
+                opp_pkm_array[-1] = max(0,opp_pkm_array[-1]-dmg_amount)
+                play_view_opp_array[-1] = max(0,play_view_opp_array[-1]-dmg_amount)
+            else:
+                opp_pkm_array[7] = max(0,opp_pkm_array[7]-dmg_amount)
+                play_view_opp_array[7] = max(0,play_view_opp_array[7]-dmg_amount)
+            if move_data.recoil:
+                recoil_dmg = move_data.recoil * dmg_amount
+                pkm_array[7] = max(0,pkm_array[7]-recoil_dmg)
+                opp_view_pkm_array[7] = max(0,play_view_opp_array[7]-recoil_dmg)    
+            if opp_pkm_array[7] == 0:
+                opp_pkm_array[3] = 2
+                play_view_opp_array[3] = 2
+                opp_fnt = True
+            if pkm_array[7] == 0:
+                pkm_array[3] = 2
+                opp_view_pkm_array[3] = 2
+                player_fnt = True
+            
+            return(player_fnt,opp_fnt,flinch_status,clamp_status)
+
+
+        elif move_category == 3:
+            pkm_array[-2] = 0
+            opp_view_pkm_array[-2] = 0
+            if move == 'confuseray' or move == 'supersonic':
                 
-                status_num = move_data.status.value
-                move_target = move_data.target.name
-                if status_num:
-                    if opp_pkm_status == 0:
-                        opp_pkm_array[3] == status_num
-                    return (player_fnt,opp_fnt,flinch_status)
-                if move_target == 'NORMAL':
-                    move_boosts = move_data.boosts
+                if alt_status_num == 0:
+                    alt_status_num =2
+                elif alt_status_num == 1:
+                    alt_status_num = 7
+                elif alt_status_num == 6:
+                    alt_status_num = 12
+                elif alt_status_num == 11:
+                    alt_status_num = 16
+                opp_pkm_array[4] = alt_status_num
+                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+            elif move == 'leechseed':
+
+                if alt_status_num == 0:
+                    alt_status_num =1
+                elif alt_status_num in [2,3,4,5,6]:
+                    alt_status_num+=5
+                elif alt_status_num in [12,13,14,15]:
+                    alt_status_num+=4
+                opp_pkm_array[4] = alt_status_num
+                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+
+            opp_pkm_status = opp_pkm_array[3]
+            if move == 'toxic':
+                
+                if opp_pkm_status == 0:
+                    opp_pkm_array[3] == 13
+                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+            
+            status_num = move_data.status.value
+            move_target = move_data.target.name
+            if status_num:
+                if opp_pkm_status == 0:
+                    opp_pkm_array[3] == status_num
+                return (player_fnt,opp_fnt,flinch_status,clamp_status)
+            if move_target == 'NORMAL':
+                move_boosts = move_data.boosts
 
 
+                
+                if 'spe' in move_boosts:
                     
-                    if 'spe' in move_boosts:
-                        
-                        boost_num = move_boosts['spe']
-                        if boost_num>0 and opp_pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and opp_pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        opp_pkm_array[16] = boost_num+opp_pkm_array[16]
-                        opp_pkm_array[10] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[16]]*opp_pkm_array[9])))
-                        play_view_opp_array[16] = opp_pkm_array[16]
-                        play_view_opp_array[10] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[16]]*play_view_opp_array[9])))
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
-                    elif 'spd' in move_boosts:
-                        boost_num = move_boosts['spd']
-                        if boost_num>0 and opp_pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and opp_pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        opp_pkm_array[17] = boost_num+opp_pkm_array[17]
-                        play_view_opp_array[17] = opp_pkm_array[17]
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
-
-                    elif 'atk' in move_boosts:
-                        
-                        boost_num = move_boosts['atk']
-                        if boost_num>0 and opp_pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and opp_pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        opp_pkm_array[18] = boost_num+opp_pkm_array[18]
-                        opp_pkm_array[13] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[18]]*opp_pkm_array[12])))
-                        play_view_opp_array[18] = opp_pkm_array[18]
-                        play_view_opp_array[13] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[18]]*play_view_opp_array[12])))
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
-                    elif 'def' in move_boosts:
-                        
-                        boost_num = move_boosts['def']
-                        if boost_num>0 and opp_pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and opp_pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        opp_pkm_array[19] = boost_num+opp_pkm_array[19]
-                        play_view_opp_array[19] = opp_pkm_array[19]
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
-                elif move_target == 'SELF':
-                    move_boosts = move_data.boosts
-
-
+                    boost_num = move_boosts['spe']
+                    if boost_num>0 and opp_pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and opp_pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
                     
-                    if 'spe' in move_boosts:
-                        
-                        boost_num = move_boosts['spe']
-                        if boost_num>0 and pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        pkm_array[16] = boost_num+pkm_array[16]
-                        pkm_array[10] = min(999,max(1,math.floor(boosts_dict[pkm_array[16]]*pkm_array[9])))
-                        opp_view_pkm_array[16] = pkm_array[16]
-                        opp_view_pkm_array[10] = min(999,max(1,math.floor(boosts_dict[opp_view_pkm_array[16]]*opp_view_pkm_array[9])))
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
-                    elif 'spd' in move_boosts:
-                        boost_num = move_boosts['spd']
-                        if boost_num>0 and pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        pkm_array[17] = boost_num+pkm_array[17]
-                        opp_view_pkm_array[17] = pkm_array[17]
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
+                    opp_pkm_array[16] = boost_num+opp_pkm_array[16]
+                    opp_pkm_array[10] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[16]]*opp_pkm_array[9])))
+                    play_view_opp_array[16] = opp_pkm_array[16]
+                    play_view_opp_array[10] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[16]]*play_view_opp_array[9])))
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
+                elif 'spd' in move_boosts:
+                    boost_num = move_boosts['spd']
+                    if boost_num>0 and opp_pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and opp_pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    
+                    opp_pkm_array[17] = boost_num+opp_pkm_array[17]
+                    play_view_opp_array[17] = opp_pkm_array[17]
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
 
-                    elif 'atk' in move_boosts:
-                        
-                        boost_num = move_boosts['atk']
-                        if boost_num>0 and pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        pkm_array[18] = boost_num+pkm_array[18]
-                        pkm_array[13] = min(999,max(1,math.floor(boosts_dict[pkm_array[18]]*pkm_array[12])))
-                        opp_view_pkm_array[18] = pkm_array[18]
-                        opp_view_pkm_array[13] = min(999,max(1,math.floor(boosts_dict[opp_view_pkm_array[18]]*opp_view_pkm_array[12])))
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
-                    elif 'def' in move_boosts:
-                        
-                        boost_num = move_boosts['def']
-                        if boost_num>0 and pkm_array == 13:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        elif boost_num< 0 and pkm_array == 1:
-                            return (player_fnt,opp_fnt,flinch_status)
-                        
-                        pkm_array[19] = boost_num+pkm_array[19]
-                        opp_view_pkm_array[19] = pkm_array[19]
-                        if opp_pkm_array[3] == 1:
-                            opp_pkm_array[13]//=2
-                            play_view_opp_array[13]//=2
-                        elif opp_pkm_array[3] == 4:
-                            opp_pkm_array[10]//=4
-                            play_view_opp_array[10]//=4
-                    return (player_fnt,opp_fnt,flinch_status)                   
+                elif 'atk' in move_boosts:
+                    
+                    boost_num = move_boosts['atk']
+                    if boost_num>0 and opp_pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and opp_pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    
+                    opp_pkm_array[18] = boost_num+opp_pkm_array[18]
+                    opp_pkm_array[13] = min(999,max(1,math.floor(boosts_dict[opp_pkm_array[18]]*opp_pkm_array[12])))
+                    play_view_opp_array[18] = opp_pkm_array[18]
+                    play_view_opp_array[13] = min(999,max(1,math.floor(boosts_dict[play_view_opp_array[18]]*play_view_opp_array[12])))
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
+                elif 'def' in move_boosts:
+                    
+                    boost_num = move_boosts['def']
+                    if boost_num>0 and opp_pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and opp_pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    
+                    opp_pkm_array[19] = boost_num+opp_pkm_array[19]
+                    play_view_opp_array[19] = opp_pkm_array[19]
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
+            elif move_target == 'SELF':
+                move_boosts = move_data.boosts
+
+
+                
+                if 'spe' in move_boosts:
+                    
+                    boost_num = move_boosts['spe']
+                    if boost_num>0 and pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    
+                    pkm_array[16] = boost_num+pkm_array[16]
+                    pkm_array[10] = min(999,max(1,math.floor(boosts_dict[pkm_array[16]]*pkm_array[9])))
+                    opp_view_pkm_array[16] = pkm_array[16]
+                    opp_view_pkm_array[10] = min(999,max(1,math.floor(boosts_dict[opp_view_pkm_array[16]]*opp_view_pkm_array[9])))
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
+                elif 'spd' in move_boosts:
+                    boost_num = move_boosts['spd']
+                    if boost_num>0 and pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    
+                    pkm_array[17] = boost_num+pkm_array[17]
+                    opp_view_pkm_array[17] = pkm_array[17]
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
+
+                elif 'atk' in move_boosts:
+                    
+                    boost_num = move_boosts['atk']
+                    if boost_num>0 and pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    
+                    pkm_array[18] = boost_num+pkm_array[18]
+                    pkm_array[13] = min(999,max(1,math.floor(boosts_dict[pkm_array[18]]*pkm_array[12])))
+                    opp_view_pkm_array[18] = pkm_array[18]
+                    opp_view_pkm_array[13] = min(999,max(1,math.floor(boosts_dict[opp_view_pkm_array[18]]*opp_view_pkm_array[12])))
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
+                elif 'def' in move_boosts:
+                    
+                    boost_num = move_boosts['def']
+                    if boost_num>0 and pkm_array == 13:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    elif boost_num< 0 and pkm_array == 1:
+                        return (player_fnt,opp_fnt,flinch_status,clamp_status)
+                    
+                    pkm_array[19] = boost_num+pkm_array[19]
+                    opp_view_pkm_array[19] = pkm_array[19]
+                    if opp_pkm_array[3] == 1:
+                        opp_pkm_array[13]//=2
+                        play_view_opp_array[13]//=2
+                    elif opp_pkm_array[3] == 4:
+                        opp_pkm_array[10]//=4
+                        play_view_opp_array[10]//=4
+                return (player_fnt,opp_fnt,flinch_status,clamp_status)                   
 
 
                 
