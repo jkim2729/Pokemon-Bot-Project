@@ -788,6 +788,7 @@ class Pokebot_Gen1(ParallelEnv):
             p1_active_array = self.battle_array[p1_active]
             p1_eff_speed = math.floor(p1_active_array[9])
             p2_active_array = self.battle_array[p2_active]
+            active_list = [p1_active_array,p2_active_array]
             p2_eff_speed = math.floor(p2_active_array[9])
             if p1_eff_speed>p2_eff_speed:
                 first_mover = 'player1'
@@ -799,7 +800,27 @@ class Pokebot_Gen1(ParallelEnv):
                     first_mover = 'player1'
                 else:
                     first_mover = 'player2'
-            # if first_mover == 'player1': 
+            p1_move_num = p1_active_array[22+ 2*p1_action]
+            p1_move_name = move_dict[p1_move_num]
+            p2_move_num = p2_active_array[22 + 2*p2_action]
+            p2_move_name = move_dict[p2_move_num]
+
+            if p1_move_name == 'quickattack' and p2_move_name != 'quickattack':
+                first_mover = 'player1'
+            elif p1_move_name != 'quickattack' and p2_move_name == 'quickattack':
+                first_mover = 'player2'
+            
+            if p1_move_name == 'counter' and p2_move_name != 'counter':
+                first_mover == 'player2'
+            elif p1_move_name != 'counter' and p2_move_name == 'counter':
+                first_mover == 'player1'
+
+            if first_mover == 'player1':
+                outcome_1 = self.reg_move(0,active_list,move=p1_move_name,clamp_flag=False)
+                play1_fnt = outcome_1[0] 
+                play2_fnt = outcome_1[1]
+                p2_flinch_status = outcome_1[2]
+                p2_clamp_status = outcome_1[3]
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
