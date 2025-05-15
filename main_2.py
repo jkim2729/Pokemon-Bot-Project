@@ -37,6 +37,18 @@ full_acc_moves = loaded_data['full_acc_moves']
 pokemon_types = loaded_data['pokemon_types']
 
 
+def create_pkm_array(spcs = 0, player = 1, active = 0, curr_status = 0, add_status = 0, partial_trap = 0, toxic_counter = 1, curr_health = 100, max_health = 100, 
+                base_speed = 0,curr_speed = 0, curr_special = 0, base_attack = 0, curr_attack = 0, curr_defense = 0, level = 0, 
+                speed_boosts = 7, special_boosts = 7, attack_boosts = 7, defense_boosts = 7, accuracy_boosts = 7,
+                reflghtscreen = 0, mv1n = 1, mv1pp = 100, mv2n = 1, mv2pp = 100, mv3n = 1, mv3pp = 100, mv4n = 1,mv4pp = 100,substitute_hp = 0):
+            return np.array([spcs,player,active,curr_status,add_status,partial_trap,toxic_counter,curr_health,max_health,base_speed,curr_speed,curr_special,base_attack,curr_attack,
+                        curr_defense,level,speed_boosts,special_boosts,attack_boosts,defense_boosts,accuracy_boosts,reflghtscreen,
+                        mv1n,mv1pp,mv2n,mv2pp,mv3n,mv3pp,mv4n,mv4pp,substitute_hp],dtype= np.uint16)
+
+class UnknownMon():
+    def __init__(self):
+
+        self.info = create_pkm_array()
 
 
 class Pokebot_Gen1(Player):
@@ -46,8 +58,9 @@ class Pokebot_Gen1(Player):
         self.player_num = None
         self.opponent_num = None
         self.prev_embed_battle = None
-        self.player_active_index = 0
-        self.opponent_active_index = 0
+        self.player_active_index = -1
+        self.opponent_active_index = -1
+
     def get_state(self, battle: AbstractBattle):
         player_team = battle.team
         opponent_team = battle.opponent_team
@@ -65,11 +78,69 @@ class Pokebot_Gen1(Player):
     def embed_battle(self,battle:AbstractBattle):
 
         ### partial trapping, toxic, confusion, leech seed, counter substitute are going to be implemented later
+        player_array = np.array([])
+        opp_array = np.array([])
+        if battle.turn == 1:
+            player_team = battle.team
+            opponent_team = battle.opponent_team
+            partial_trap = 0
+            toxic_counter = 0
+            alt_status = 0
+            sub_hp = 0
+            index = 0
+            zipped = zip_longest(player_team,opponent_team,fillvalue=UnknownMon())
+            for pmon,omon in zipped:
+                if isinstance(omon,UnknownMon):
+                    omon_array = omon.info
+                else:
+                    ospecies = omon.species
+                    odex_num = dex_nums[ospecies]
+                    o_act_base_speed = stats[ospecies]['Speed_Total']
+                    o_act_current_speed = o_act_base_speed
+                    o_act_current_special = stats[ospecies]['Special_Total']
+                    o_act_base_attack = stats[ospecies]['Attack_Total']
+                    o_act_current_attack = o_act_base_attack
+                    o_act_current_defense = stats[ospecies]['Defense_Total']
+                    omon_array = create_pkm_array(spcs = odex_num, player=1,active=1,curr_status=0,add_status=0,partial_trap=0,
+                                                  toxic_counter=1,curr_health=omon.current_hp,max_health=omon.max_hp,base_speed=o_act_base_speed,curr_speed=o_act_current_speed,
+                                                  curr_special=o_act_current_special,base_attack=o_act_base_attack,curr_attack=o_act_current_attack,curr_defense=o_act_current_defense,
+                                                  level=100,speed_boosts = 7, special_boosts = 7, attack_boosts = 7, defense_boosts = 7, accuracy_boosts = 7,
+                                                reflghtscreen = 0, mv1n = 1, mv1pp = 100, mv2n = 1, mv2pp = 100, mv3n = 1, mv3pp = 100, mv4n = 1,mv4pp = 100,substitute_hp = 0)
+                opp_array = np.vstack((opp_array, omon_array)) if opp_array.size > 0 else omon_array
+                p_stats = pmon.stats
+
+                if pmon.active:
+                    pactive_num = 1
+                else:
+                    pactive_num = 0
+                pspecies = pmon.species
+                pdex_num = dex_nums[pspecies]
+                pmoves = pmon.moves
+                move_names = []
+                move_pp = []
+                for k,v in pmoves.items():
+                    move_names.append(rev_move_dict[k])
+                    move_pp.append(v.current_pp)
+                if len(move_names)<4:
+                    pad_list_len = 4-len(move_names)
+                    pad_list = [0]*pad_list_len
+                    move_names.extend(pad_list)
+                    move_pp.extend(pad_list)
+                pmon_array = create_pkm_array(spcs=pdex_num,player=0,active=pactive_num,curr_status=0,add_status=0,partial_trap=0,
+                                              toxic_counter=1,curr_health=p_stats['hp'],max_health=p_stats['hp'],base_speed=p_stats['spe'],curr_speed=p_stats['spe'],
+                                              curr_special=p_stats['spd'],base_attack=p_stats['atk'],curr_attack=p_stats['atk'],curr_defense=p_stats['def'],
+                                              level=100,speed_boosts=7,special_boosts=7,attack_boosts=7,defense_boosts=7,accuracy_boosts=7,reflghtscreen=0,
+                                              mv1n=move_names[0],mv1pp=move_pp[0],mv2n=move_names[1],mv2pp=move_pp[1],mv3n=move_names[2],mv3pp=move_pp[2],
+                                              mv4n=move_names[3],mv3pp=move_pp[3],substitute_hp=0
+                                              )
+                player_array = np.vstack((player_array, pmon_array)) if player_array.size > 0 else pmon_array
+            full_array = np.vstack(player_array,opp_array)
+            return full_array
         player_team = battle.team
         
         opponent_team = battle.opponent_team
-        partial_trap = 0
-        toxic_counter = 0
+        partial_trap_num = 0
+        toxic_num = 1
         alt_status = 0
         sub_hp = 0 
         player_mon = battle.active_pokemon
@@ -78,6 +149,10 @@ class Pokebot_Gen1(Player):
         opp_para_flag = False
         opp_brn_flag = False
         play_para_flag = False
+        play_swap_flag = False
+        play_fnt_flag = False
+        opp_swap_flag = False
+        opp_fnt_flag = False
         play_brn_flag = False
         if opp_status == 1:
             opp_brn_flag = True
@@ -101,7 +176,7 @@ class Pokebot_Gen1(Player):
                     else:
                         self.player_num = 1
                         self.opponent_num = 2
-
+        events = observations.events
         index = 0
         zipped = zip_longest(player_team,opponent_team,fillvalue=0)
         for pmon,omon in zipped:
@@ -111,126 +186,188 @@ class Pokebot_Gen1(Player):
             odex_num = dex_nums[ospecies]
             pteam_num = 0
             oteam_num = 1
-            events = observations.events
+            p_stats = pmon.stats
+            
             mover = None
             if pmon.active:
                 pactive_num = 1
-                self.player_active_index = index
-                if self.prev_embed_battle[index][8] == 0:
-                    p_base_speed = stats[pspecies]['Speed_Total']
-                    p_current_speed = stats[pspecies]['Speed_Total']
-                if self.prev_embed_battle[index][10] == 0:
-                    p_base_special = stats[pspecies]['Special_Total']
-                if self.prev_embed_battle[index][11] == 0:
-                    p_base_attack = stats[pspecies]['Attack_Total']
-                    p_current_attack = o_base_attack
-                if self.prev_embed_battle[index][13] == 0:
-                    p_base_defense = stats[pspecies]['Defense_Total']
+                p_act_base_speed = p_stats['spe']
+                p_act_base_attack = p_stats['atk']
+                p_boost_dict = pmon.boosts
+
+                if index != self.player_active_index:
+                    play_swap_flag = True
+                    self.player_active_index = index
+
+                
+                p_act_current_speed = p_stats['spe']
+                if play_para_flag:
+                    p_act_current_speed = min(1,p_act_current_speed//4)
+                
+                
+                p_act_current_attack = p_act_base_attack
+                if play_brn_flag:
+                    p_act_current_attack = min(1,p_act_current_attack//2)
 
             else:
                 pactive_num = 0
             if omon.active:
                 oactive_num = 1
-                self.opponent_active_index = index
-                if self.prev_embed_battle[index+6][8] == 0:
-                    o_base_speed = stats[ospecies]['Speed_Total']
-                    o_current_speed = stats[ospecies]['Speed_Total']
-                if self.prev_embed_battle[index+6][10] == 0:
-                    o_base_special = stats[ospecies]['Special_Total']
+                if index != self.opponent_active_index:
+                    opp_swap_flag = True
+                    self.opponent_active_index = index
+                if self.prev_embed_battle[index+6][9] == 0:
+                    o_act_base_speed = stats[ospecies]['Speed_Total']
+                    o_act_current_speed = stats[ospecies]['Speed_Total']
                 if self.prev_embed_battle[index+6][11] == 0:
-                    o_base_attack = stats[ospecies]['Attack_Total']
-                    o_current_attack = o_base_attack
-                if self.prev_embed_battle[index+6][13] == 0:
-                    o_base_defense = stats[ospecies]['Defense_Total']
+                    o_act_current_special = stats[ospecies]['Special_Total']
+                if self.prev_embed_battle[index+6][12] == 0:
+                    o_act_base_attack = stats[ospecies]['Attack_Total']
+                    o_act_current_attack = o_act_base_attack
+                if self.prev_embed_battle[index+6][14] == 0:
+                    o_act_current_defense = stats[ospecies]['Defense_Total']
 
 
 
 
             else:
                 oactive_num = 0
-
-            p_speed_boosts = self.prev_embed_battle[index][17]
-            p_special_boosts = self.prev_embed_battle[index][18]
-            p_attack_boosts = self.prev_embed_battle[index][19]
-            p_defense_boosts = self.prev_embed_battle[index][20]
-            p_accuracy_boosts = self.prev_embed_battle[index][21]
-            o_speed_boosts = self.prev_embed_battle[index+6][17]
-            o_special_boosts = self.prev_embed_battle[index+6][18]
-            o_attack_boosts = self.prev_embed_battle[index+6][19]
-            o_defense_boosts = self.prev_embed_battle[index+6][20]
-            o_accuracy_boosts = self.prev_embed_battle[index+6][21]
+            if pactive_num == 0:
+                p_speed_boosts = 7
+                p_special_boosts = 7
+                p_attack_boosts = 7
+                p_defense_boosts = 7
+                p_accuracy_boosts = 7
+                p_base_speed = p_stats['spe'] 
+                p_current_speed = p_base_speed
+                p_base_attack = p_stats['atk']
+                p_current_attack = p_base_attack
+                p_current_special = p_stats['spd']
+                p_current_defense = p_stats['def']
+                pstat_condition = pmon.status.value
+                if pstat_condition == 7:
+                    pstat_condition = 13
+                elif pstat_condition == 6:
+                    pstat_condition+= (pmon.status_counter-1) # need to verify what they count as turn 0
+                
+                php_stat = pmon.current_hp
+                p_max_hp = pmon.max_hp
+                pmoves = pmon.moves
+                move_names = []
+                move_pp = []
+                for k,v in pmoves.items():
+                    move_names.append(rev_move_dict[k])
+                    move_pp.append(v.current_pp)
+                if len(move_names)<4:
+                    pad_list_len = 4-len(move_names)
+                    pad_list = [0]*pad_list_len
+                    move_names.extend(pad_list)
+                    move_pp.extend(pad_list)
+                p_mon_array = create_pkm_array(spcs = pdex_num,player=0,active=0,curr_status=pstat_condition,add_status=alt_status,partial_trap=partial_trap_num,
+                                               toxic_counter=toxic_num,curr_health=php_stat,max_health=p_max_hp,base_speed=p_base_speed,curr_speed=p_current_speed,
+                                               curr_special=p_current_special,base_attack=p_base_attack,curr_attack=p_current_attack,curr_defense=p_current_defense,level=100,
+                                               speed_boosts=p_speed_boosts,special_boosts=p_special_boosts,attack_boosts=p_attack_boosts,defense_boosts=p_defense_boosts,accuracy_boosts=p_accuracy_boosts,
+                                               reflghtscreen=0,mv1n=move_names[0],mv1pp=move_pp[0],mv2n=move_names[1],mv2pp=move_pp[1],mv3n=move_names[2],mv3pp=move_pp[2],
+                                              mv4n=move_names[3],mv3pp=move_pp[3],substitute_hp=0
+                                               )
+                player_array = np.vstack((player_array, p_mon_array)) if player_array.size > 0 else p_mon_array
+            if oactive_num == 0:
+                o_speed_boosts = 7
+                o_special_boosts = 7
+                o_attack_boosts = 7
+                o_defense_boosts = 7
+                o_accuracy_boosts = 7
+                o_base_speed = self.prev_embed_battle[index+6][9]
+                o_current_speed = o_base_speed
+                o_base_attack = self.prev_embed_battle[index+6][12]
+                o_current_attack = o_base_attack
+                o_current_special = self.prev_embed_battle[index+6][11]
+                o_current_defense = self.prev_embed_battle[index+6][14]
+                ostat_condition = omon.status.value
+                if ostat_condition == 7:
+                    ostat_condition = 13
+                elif ostat_condition == 6:
+                    ostat_condition+= (omon.status_counter-1) # need to verify what they count as turn 0
+                
+                ohp_stat = omon.current_hp
+                o_max_hp = omon.max_hp
+                omoves = omon.moves
+                move_names = []
+                move_pp = []
+                for k,v in omoves.items():
+                    move_names.append(rev_move_dict[k])
+                    move_pp.append(v.current_pp)
+                if len(move_names)<4:
+                    pad_list_len = 4-len(move_names)
+                    pad_list = [1]*pad_list_len
+                    pad_list_pp = [100]*pad_list_len
+                    move_names.extend(pad_list)
+                    move_pp.extend(pad_list_pp)
+                o_mon_array = create_pkm_array(spcs=odex_num,player=1,active=0,curr_status=ostat_condition,add_status=alt_status,partial_trap=partial_trap_num,
+                                               toxic_counter=toxic_num,curr_health=ohp_stat,max_health=o_max_hp,base_speed=o_base_speed,curr_speed=o_current_speed,
+                                               curr_special=o_current_special,base_attack=o_base_attack,curr_attack=o_current_attack,curr_defense=o_current_defense,level=100,
+                                               speed_boosts=o_speed_boosts,special_boosts=o_special_boosts,attack_boosts=o_attack_boosts,defense_boosts=o_defense_boosts,accuracy_boosts=o_accuracy_boosts,
+                                               reflghtscreen=0,mv1n=move_names[0],mv1pp=move_pp[0],mv2n=move_names[1],mv2pp=move_pp[1],mv3n=move_names[2],mv3pp=move_pp[2],
+                                              mv4n=move_names[3],mv3pp=move_pp[3],substitute_hp=0
+                                               )
+                opp_array = np.vstack((opp_array, o_mon_array)) if opp_array.size > 0 else o_mon_array        
+            index+=1
         
 
-            for e in events:
-                event_name = e[1]
-                if event_name == 'move':
-                    mover = e[2][1]
-                    if mover == 1:
-                        non_mover = 2
-                    else:
-                        non_mover = 1
-                if event_name == 'boost' or event_name == '-unboost':
-                    target = e[2][1]
-                    if mover == self.opponent_num and target == self.player_num:
-                        if 'spe' in e:
-                            p_current_speed = p_base_speed*boosts_dict[p_speed_boosts]
-                            if play_para_flag:
-                                p_current_speed = p_current_speed//4
-                        elif 'atk' in e:
-                            p_current_attack = p_base_attack*boosts_dict[p_attack_boosts]
-                            if play_brn_flag:
-                                p_current_attack = p_current_attack//2
-                    elif mover == self.opponent_num and target == mover:
-                        if 'spe' in e:
-                            o_current_speed = o_base_speed*boosts_dict[o_speed_boosts]
-                            if play_para_flag:
-                                p_current_speed = p_current_speed//4
-                        elif 'atk' in e:
-                            o_current_attack = o_base_attack*boosts_dict[o_attack_boosts]
-                            if play_brn_flag:
-                                p_current_attack = p_current_attack//2
-                    elif mover == self.player_num and target == self.opponent_num:
-                        if 'spe' in e:
-                            o_current_speed = o_base_speed*boosts_dict[o_speed_boosts]
-                            if opp_para_flag:
-                                o_current_speed = o_current_speed//4
-                        elif 'atk' in e:
-                            o_current_attack = o_base_attack*boosts_dict[o_attack_boosts]
-                            if opp_brn_flag:
-                                o_current_attack = o_current_attack//2
-                    elif mover == self.player_num and target == mover:
-                        if 'spe' in e:
-                            p_current_speed = p_base_speed*boosts_dict[p_speed_boosts]
-                            if opp_para_flag:
-                                o_current_speed = o_current_speed//4
-                        elif 'atk' in e:
-                            p_current_attack = p_base_attack*boosts_dict[o_attack_boosts]
-                            if opp_brn_flag:
-                                o_current_attack = o_current_attack//2                                                         
+
+        for e in events:
+            event_name = e[1]
+            if event_name == 'move':
+                mover = e[2][1]
+                if mover == 1:
+                    non_mover = 2
+                else:
+                    non_mover = 1
+            if event_name == 'boost' or event_name == '-unboost':
+                target = e[2][1]
+                if mover == self.opponent_num and target == self.player_num:
+                    if 'spe' in e:
+                        p_current_speed = p_base_speed*boosts_dict[p_speed_boosts]
+                        if play_para_flag:
+                            p_current_speed = p_current_speed//4
+                    elif 'atk' in e:
+                        p_current_attack = p_base_attack*boosts_dict[p_attack_boosts]
+                        if play_brn_flag:
+                            p_current_attack = p_current_attack//2
+                elif mover == self.opponent_num and target == mover:
+                    if 'spe' in e:
+                        o_current_speed = o_base_speed*boosts_dict[o_speed_boosts]
+                        if play_para_flag:
+                            p_current_speed = p_current_speed//4
+                    elif 'atk' in e:
+                        o_current_attack = o_base_attack*boosts_dict[o_attack_boosts]
+                        if play_brn_flag:
+                            p_current_attack = p_current_attack//2
+                elif mover == self.player_num and target == self.opponent_num:
+                    if 'spe' in e:
+                        o_current_speed = o_base_speed*boosts_dict[o_speed_boosts]
+                        if opp_para_flag:
+                            o_current_speed = o_current_speed//4
+                    elif 'atk' in e:
+                        o_current_attack = o_base_attack*boosts_dict[o_attack_boosts]
+                        if opp_brn_flag:
+                            o_current_attack = o_current_attack//2
+                elif mover == self.player_num and target == mover:
+                    if 'spe' in e:
+                        p_current_speed = p_base_speed*boosts_dict[p_speed_boosts]
+                        if opp_para_flag:
+                            o_current_speed = o_current_speed//4
+                    elif 'atk' in e:
+                        p_current_attack = p_base_attack*boosts_dict[o_attack_boosts]
+                        if opp_brn_flag:
+                            o_current_attack = o_current_attack//2                                                         
                                 
 
 
 
 
 
-            pstat_condition = pmon.status.value
-            if pstat_condition == 7:
-                pstat_condition = 13
-            elif pstat_condition == 6:
-                pstat_condition+= (pmon.status_counter-1) # need to verify what they count as turn 0
             
-            php_stat = pmon.current_hp
-
-            ostat_condition = omon.status.value
-            if ostat_condition == 7:
-                ostat_condition = 13
-            elif ostat_condition == 6:
-                ostat_condition+= (omon.status_counter-1) # need to verify what they count as turn 0
-            
-            ohp_stat = omon.current_hp
-
-
-            index+=1
 
             
 
