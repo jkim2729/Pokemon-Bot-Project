@@ -42,14 +42,16 @@ def damage(level, crit , power , atk, dfs, atk_mod = 1, dfs_mod = 1, stab = 1, t
     # Otherwise, return a scaled list of damage values
     return [(final_dmg_value * x) // 255 for x in DAMAGE_LIST]
 
-def select_dmg_value(level,speed,power,atk,dfs,atk_mod = 1,dfs_mod = 1,stab = 1,type_mult = 1): #base speed
-
-    crit_rate = (speed/512)
-    rand_num = random.random()
-    if rand_num<crit_rate:
-        crit_val = True
+def select_dmg_value(level,speed,power,atk,dfs,atk_mod = 1,dfs_mod = 1,stab = 1,type_mult = 1,crit_status ='na'): #base speed
+    if crit_status == 'na':
+        crit_rate = max(255/256,(speed/512))
+        rand_num = random.random()
+        if rand_num<crit_rate:
+            crit_val = True
+        else:
+            crit_val = False
     else:
-        crit_val = False
+        crit_val = crit_status
     dmg_values = damage(level,crit_val,power,atk,dfs,atk_mod,dfs_mod,stab,type_mult)
     final_val = random.choice(dmg_values)
 

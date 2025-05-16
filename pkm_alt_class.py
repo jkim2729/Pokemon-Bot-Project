@@ -117,7 +117,7 @@ def team_generator(seed_num=None):
     mon_levels = [100,100,100,100,100,100]
     for mon in mon_list:
         valid_move_list = [x for x in pkm_mvs_dict[mon] if x not in banned_moves] 
-        mvs = random.sample(pkm_mvs_dict[mon],min(4,len(pkm_mvs_dict[mon])))
+        mvs = random.sample(valid_move_list,min(4,len(valid_move_list)))
 
         stats_dict = {'atk': stats.loc[mon]['Attack_Total'] , 'def': stats.loc[mon]['Defense_Total'] , 'hp': stats.loc[mon]['HP_Total'],
                         'sp': stats.loc[mon]['Special_Total'], 'spe': stats.loc[mon]['Speed_Total']}
@@ -134,3 +134,41 @@ def team_generator(seed_num=None):
         pkm_team.append(pokemon)
     
     return pkm_team
+
+def team_generator_alt(seed_num = None):
+
+    random.seed(seed_num)
+    mon_nums = []
+    while len(mon_nums)<6:
+        num = random.randint(1,149)
+
+        if num not in mon_nums and num != 132:
+            mon_nums.append(num)
+
+    mon_list = [pokemon_list[x] for x in mon_nums]
+    mon_moves = []
+    pkm_team = ''
+
+    for mon in mon_list:
+        valid_move_list = [x for x in pkm_mvs_dict[mon] if x not in banned_moves] 
+        mvs = random.sample(valid_move_list,min(4,len(valid_move_list)))
+
+
+        mon_moves.append(mvs)
+
+        pkm = f"{mon}\nAbility: No Ability\n"
+        for i in range(len(mvs)):
+            if i!=0:
+                pkm+='\n'
+                pkm+= '- '
+                pkm+=mvs[i]
+            else:
+                pkm+= '- '
+                pkm+=mvs[i]
+        if pkm_team == '':
+            pkm_team = pkm
+        else:
+            pkm_team+='\n'
+            pkm_team+=pkm
+    return pkm_team
+
