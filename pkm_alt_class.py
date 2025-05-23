@@ -100,7 +100,7 @@ class Pokemon_s():
 banned_moves = ['guillotine','whirlwind','stomp','fly','jumpkick','rollingkick',
                 'thrash','roar','disable','solarbeam','mist','petaldance'
                 ,'haze','focusenergy','bide','metronome','mirrormove','boneclub',
-                'highjumpkick','transform','splash','']
+                'highjumpkick','transform','splash','counter','doubleteam','horndrill','']
 def team_generator(seed_num=None):
 
     random.seed(seed_num)
@@ -169,6 +169,8 @@ def team_generator_alt(seed_num = None):
             pkm_team = pkm
         else:
             pkm_team+='\n'
+            pkm_team+='\n'
             pkm_team+=pkm
     return pkm_team
 
+print(team_generator_alt())
