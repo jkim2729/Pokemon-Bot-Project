@@ -39,7 +39,7 @@ from poke_env.player import PokeEnv
 from poke_env.player.env import _EnvPlayer
 from poke_env.concurrency import POKE_LOOP, create_in_poke_loop
 from poke_env.teambuilder.teambuilder import Teambuilder
-
+import uuid
 ItemType = TypeVar("ItemType")
 ObsType = TypeVar("ObsType")
 ActionType = TypeVar("ActionType")
@@ -827,7 +827,7 @@ class _EnvPlayer_Mod(_EnvPlayer):
         other_mon = battle.available_switches
         fullteam = [current_mon]+other_mon
         self.full_team = fullteam.copy()
-        print('METHOD!')
+
     def update_team(self, team):
 
         if isinstance(team, Teambuilder):
@@ -891,7 +891,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
         account_configuration1: Optional[AccountConfiguration] = None,
         account_configuration2: Optional[AccountConfiguration] = None,
         avatar: Optional[int] = None,
-        battle_format: str = "gen8randombattle",
+        battle_format: str = "gen1ou",
         log_level: Optional[int] = None,
         save_replays: Union[bool, str] = False,
         server_configuration: Optional[
@@ -919,10 +919,16 @@ class Pokebot_Gen1_Environment(PokeEnv):
           Attack boosts, Defense boosts, Accuracy boosts, Reflect-LightScreen, Move 1 Name, Move 1 PP, Move 2 Name, Move 2 PP, 
           Move 3 Name, Move 3 PP, Move 4 Name, Move 4 PP,prev_dmg (used for counter),substitute_hp (0 if no substitute is in place)]
         '''
-
-
+        self._np_random: Optional[Generator] = None
+        if team1 is None:
+            team1 = team_generator_alt()
+        if team2 is None:
+            team2 = team_generator_alt
+        unique_id = str(uuid.uuid4())[:8]
+        self.agent_1_name = f"rl_agent_1_{unique_id}"
+        self.agent_2_name = f"rl_agent_2_{unique_id}"
         self.agent1 = _EnvPlayer_Mod(
-            username=self.__class__.__name__,  # type: ignore
+            username=self.agent_1_name,  # type: ignore
             account_configuration=account_configuration1,
             avatar=avatar,
             battle_format=battle_format,
@@ -939,7 +945,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
             team=team1,
         )
         self.agent2 = _EnvPlayer_Mod(
-            username=self.__class__.__name__,  # type: ignore
+            username=self.agent_2_name,  # type: ignore
             account_configuration=account_configuration2,
             avatar=avatar,
             battle_format=battle_format,
@@ -958,7 +964,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
 
         self.agents: List[str] = []
         self.possible_agents = [self.agent1.username, self.agent2.username]
-        self.action_spaces = {
+        self._action_spaces = {
             self.possible_agents[0]: Discrete(12),
             self.possible_agents[1]: Discrete(12)
         }
@@ -966,7 +972,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
         high_matrix = np.tile(high_values, (12, 1)) 
 
 
-        self.observation_spaces = {
+        self._observation_spaces = {
             self.possible_agents[0]: Box(
                     low=0,  
                     high=high_matrix,  
@@ -987,7 +993,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
         self.agent2_to_move = False
         self.fake = fake
         self.strict = strict
-        self._np_random: Optional[Generator] = None
+
         self._reward_buffer: WeakKeyDictionary[AbstractBattle, float] = (
             WeakKeyDictionary()
         )
@@ -998,6 +1004,16 @@ class Pokebot_Gen1_Environment(PokeEnv):
             self._challenge_task = asyncio.run_coroutine_threadsafe(
                 self._challenge_loop(), POKE_LOOP
             )
+    def observation_space(self, agent): 
+        return self._observation_spaces[agent]
+
+
+
+    def action_space(self, agent):
+        return self._action_spaces[agent]
+
+
+
     def embed_battle(self, battle):
     ### partial trapping, toxic, confusion, leech seed, counter substitute are going to be implemented later
         name = battle.player_username
@@ -1497,7 +1513,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
                                         reflghtscreen=0,mv1n=p_act_move_names[0],mv1pp=p_act_move_pp[0],mv2n=p_act_move_names[1],mv2pp=p_act_move_pp[1],mv3n=p_act_move_names[2],mv3pp=p_act_move_pp[2],
                                         mv4n=p_act_move_names[3],mv4pp=p_act_move_pp[3],substitute_hp=0).reshape(1,-1)
         player_array_list.insert(active_agent.player_active_index,p_act_array)
-        print(player_array_list)
+
         vec_dict = {vec[0][0]: vec for vec in player_array_list}
         
         ordered_player_array_list = [vec_dict[num] for num in active_agent.original_mon_order]
@@ -1518,17 +1534,15 @@ class Pokebot_Gen1_Environment(PokeEnv):
     ]:  
 
 
-        print('STEP BEGIN')
+
         assert self.battle1 is not None
-        print('!')
+
         assert self.battle2 is not None
-        print('!')
+
         assert not self.battle1.finished
-        print('!')
+
         assert not self.battle2.finished
-        print('!')
-        print(self.agent1.teamnames)
-        print(self.agent2.teamnames)
+
 
         if self.agent1_to_move:
             self.agent1_to_move = False
@@ -1611,7 +1625,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
 
             
         if name == self.agent1.username:
-            print('!')
+
             active_agent = self.agent1
         else:
             active_agent = self.agent2
@@ -1631,7 +1645,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
             else:
                 return BattleOrder(random.choice(valid_options))
                 # raise ValueError('Invalid Action')
-        print(action)
+
         if action in [0,1,2,3,4,5]:
             if action == active_agent.player_active_index:
                 return BattleOrder(random.choice(valid_options))
@@ -1646,7 +1660,7 @@ class Pokebot_Gen1_Environment(PokeEnv):
         aval_moves = battle.available_moves
         
         active_mon_string = battle.active_pokemon.species
-        print(active_agent.teaminfo)
+
         move_list = active_agent.teaminfo[active_mon_string]
         if action > len(aval_moves)-1:
             return BattleOrder(random.choice(valid_options))
@@ -1661,7 +1675,8 @@ class Pokebot_Gen1_Environment(PokeEnv):
             # raise ValueError('Invalid Action')       
             
         
-
+    def render_mode(self, mode = "human"):
+        return super().render(mode)
 
 
     def order_to_action(
@@ -1697,21 +1712,18 @@ class Pokebot_Gen1_Environment(PokeEnv):
         if seed is not None:
             self._np_random, seed = seeding.np_random(seed)
         if options:
-            print('!')
-            print(options)
-            print('!')
             if 'agent1' in options:
-                print('FLAG1')
+
                 self.agent1.update_team(options['agent1'])
             else:
-                print('FLAG2')
+
                 newteam1 = team_generator_alt(seed_num=seed)
                 self.agent1.update_team(newteam1)
             if 'agent2' in options:
-                print('FLAG3')
+
                 self.agent2.update_team(options['agent2'])
             else:
-                print('FLAG4')
+
                 newteam2 = team_generator_alt(seed_num=seed)
                 self.agent2.update_team(newteam2)
         elif options is None:
@@ -1757,7 +1769,6 @@ class Pokebot_Gen1_Environment(PokeEnv):
             self.agents[0]: self.embed_battle(self.battle1),
             self.agents[1]: self.embed_battle(self.battle2),
         }
-        print('RESET END')
         return observations, self.get_additional_info()
 
     
@@ -1771,5 +1782,5 @@ env = Pokebot_Gen1_Environment(
 # obs, info = env.reset()
 # print("Initial observations:", obs)
 # print("Info:", info)
-from pettingzoo.test import parallel_api_test
-parallel_api_test(env,num_cycles=100)
+# from pettingzoo.test import parallel_api_test
+# parallel_api_test(env,num_cycles=100)
